@@ -1,0 +1,13 @@
+.vs/
+UQFramework/bin/
+UQFramework/obj/
+UQFramework.Test/bin/
+UQFramework.Test/obj/
+packages/
+UQFrameWork.Demo/obj/
+/UQFrameWork.Demo180914.vspx
+/UQFrameWork.Demo.psess
+/UQFrameWork.Demo/bin/Debug
+UQFrameWork.Demo/bin/Release/UQFrameWork.Demo.exe.config
+UQFrameWork.Demo/bin/Release/Newtonsoft.Json.xml
+*.nupkg
