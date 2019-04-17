@@ -123,3 +123,4 @@ After all the previous steps are done data can be filtered and projected using L
         .Select(x => new { Id = x.Identifier, Name = x.Name })
         .ToList()
 ```
+See UQFramework.Demo project for more details.
