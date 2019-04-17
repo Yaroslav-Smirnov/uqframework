@@ -3,6 +3,7 @@ UQFramework .Net Standard Library which allows linq to any data store similiar t
 The library is developed within [LEAPDev](https://leapdev.io/)
 
 # Getting Started
+
 ## Creating Model
 Any model with string identifier can be used in UQFramework. The identifier property must be marked with [Key] or [Identifier] attribute.
 ```C#
@@ -14,5 +15,72 @@ Any model with string identifier can be used in UQFramework. The identifier prop
         public string Name { get; set; }
 
         public string Property1 { get; set; }
+    }
+```
+
+## Creating Data Access Components (DAO)
+
+There are following interfaces available for implementation in Data Access Components:
+* *IDataSourceReader<>* - supports getting entity by identifier;
+* *IDataBulkReader<>* - supports getting a set of entities by a set of identifiers in one go;
+* *IDataSourceWriter<>* - supports CRUD operations;
+* *IDataSourceBulkWriter<>* - supports updating, creation and deletion of entities in one go.
+* *INeedDataSourceProperties* - allows passing parameters to datastore (such as connection strings)
+* *IDataSourceEnumerator* - supports enumeration of the entities. Must be implemented if caching is used (see below).
+
+if DAO is intended to be used for fetching data it must implement either IDataSourceReader<> or IDataBulkReader<>. 
+if in addition to that data changes are required then it must implement either IDataSourceWriter<> or IDataSourceBulkWriter<>
+
+INeedDataSourceProperties is used when DAO needs some configuration to access the data. In the example below DAO operates over files in a folder and gets the path to this folder from the parameters supplied through INeedDataSourceProperties interface.
+
+**Example**
+```C#
+    internal class DaoFile : IDataSourceReader<Entity>, IDataSourceEnumerator<Entity>, IDataSourceWriter<Entity>, INeedDataSourceProperties
+    {
+        private string _folder;
+
+        public void SetProperties(IReadOnlyDictionary<string, object> properties)
+        {
+            _folder = (string)properties["folder"];
+        }
+
+        public Entity GetEntity(string identifier)
+        {
+            var file = Path.Combine(_folder, $"{identifier}.json");
+            if (!File.Exists(file))
+                return null;
+            return JsonConvert.DeserializeObject<Entity>(File.ReadAllText(file));
+        }
+
+        public void AddEntity(Entity entity)
+        {
+            if (string.IsNullOrEmpty(entity.Identifier))
+                entity.Identifier = (GetAllEntitiesIdentifiers().Max(int.Parse) + 1).ToString();
+
+            var file = Path.Combine(_folder, $"{entity.Identifier}.json");
+            File.WriteAllText(file, JsonConvert.SerializeObject(entity));
+        }
+
+        public void UpdateEntity(Entity entity)
+        {
+            var file = Path.Combine(_folder, $"{entity.Identifier}.json");
+            File.WriteAllText(file, JsonConvert.SerializeObject(entity));
+        }
+
+        public void DeleteEntity(Entity entity)
+        {
+            var file = Path.Combine(_folder, $"{entity.Identifier}.json");
+            File.Delete(file);
+        }
+
+        public IEnumerable<string> GetAllEntitiesIdentifiers()
+        {
+            return Directory.EnumerateFiles(_folder, "*.json").Select(Path.GetFileNameWithoutExtension);
+        }
+
+        public int Count()
+        {
+            return Directory.EnumerateFiles(_folder, "*.json").Count();
+        }
     }
 ```
