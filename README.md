@@ -84,3 +84,41 @@ INeedDataSourceProperties is used when DAO needs some configuration to access th
         }
     }
 ```
+
+## Creating Context
+
+To access entities in collections and being able to query them using LINQ a context class must be created, according to the following rules:
+* It must iherit from *UQContext*
+* For each entity a property of type IUQCollection<> must be created and it **must have a setter** (preferably a private one).
+* The DAO matching the property should be specified in *DataAccessObject* attribute
+
+**Example**
+```C#
+    internal class DataStoreContext : UQContext
+    {
+        public DataStoreContext() : base("db1", new Dictionary<string, object>
+        {
+            ["folder"] = @"C:\UQFramework.Demo\Files"
+        })
+        { }
+
+        [DataAccessObject(typeof(DaoFile))]
+        public IUQCollection<Entity> Entities { get; set; }
+    }
+```
+
+In the example above the base constructor take *dataStoreId* and a dictionary of paramters which will be internally passed to all data access components implementing the INeedDataSourceProperties interface. 
+*dataStoreId* - is logical name for the data storage which also allows switching between different datastores if the application supports many.
+
+## Querying the Entities
+After all the previous steps are done data can be filtered and projected using LINQ:
+
+```C#
+    var context = new DataStoreContext();
+    // search by substring
+    var subString = "aSubstring";
+    var list = context.Entities
+        .Where(x => (x.Name ?? string.Empty).IndexOf(subString, StringComparison.InvariantCultureIgnoreCase) >= 0)
+        .Select(x => new { Id = x.Identifier, Name = x.Name })
+        .ToList()
+```
