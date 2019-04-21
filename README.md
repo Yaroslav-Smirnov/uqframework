@@ -119,9 +119,8 @@ After all the previous steps are done data can be filtered and projected using L
     // search by substring
     var subString = "aSubstring";
     var list = context.Entities
-        .Where(x => (x.Name ?? string.Empty).IndexOf(subString, StringComparison.InvariantCultureIgnoreCase) >= 0)
-        .Select(x => new { Id = x.Identifier, Name = x.Name })
-        .ToList()
+        .Where(x => x.Name.IndexOf(subString, StringComparison.InvariantCultureIgnoreCase) >= 0)
+        .ToList();
 ```
 See UQFramework.Demo project for more details.
 
@@ -129,3 +128,15 @@ See UQFramework.Demo project for more details.
 (TBD)
 
 ## Caching
+Filtering operations (such as Where clause and so on) can take a lot of time in case of large data stores for each item needs to be loaded and checked for meeting the filter criteria. UQ Framework allows to improve performance of such operations significantly by caching of a subset of entity properties. 
+Cached properties are kept in memory along with the item identifier so that when only cached properties are used in an expression UQ framework is able to execute filter over the cache. Then when identifiers of the items is obtained only they are loaded from the datastore so the resulting number of data requests is significantly reduced. Furthermore, if only cached properties are retrieved (lets say an aggregation operation is used or Select projects on another type) then UQFrameworks executes the whole query entirely in memory without any call to data access components. 
+
+UQ keeps the cache in sync by updating on each CRUD operation (only added, changed or deleted items are updated).
+
+To enable caching in UQ Framework the following needs to be done
+* DAO must implement *IDataSourceEnumerator<>* or *IDataSourceEnumeratorEx<>* interface
+* Cache storage must be configured in App.config
+* Each cached property must be decorated with *Cached* attribute. 
+
+### Cache configuration
+(TBD)
