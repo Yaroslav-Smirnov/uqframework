@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 
 namespace UQFrameWork.Demo
 {
+    /// <summary>
+    /// Generates data files
+    /// </summary>
     internal static class Generator
     {
         public static void GenerateFiles(string folder, int number, bool overwrite = false)
@@ -27,18 +30,7 @@ namespace UQFrameWork.Demo
                     Identifier = i.ToString(),
                     Name = data[i],
                     Property1 = $"Value1-{i}",
-                    Property2 = i,
-                    Property3 = i + 1000000,
-                    Property4 = DateTime.Now.AddSeconds(i),
-                    Property5 = (byte)(i % 255),
-                    Property6 = ((i % 3) == 2),
-                    Property7 = double.Parse($"3.{i}"),
-                    Property8 = double.Parse($"{i}.8543111887"),
-                    Property9 = (short)(i % 31000),
-                    Property10 = (uint)i,
                     Collection = new List<string>(Enumerable.Range(1, 100).Select(x => x.ToString())),
-                    //SomeData = data[i],
-                    //Created = DateTime.Now.AddSeconds(i)
                 };
 
                 File.WriteAllText(file, JsonConvert.SerializeObject(item));

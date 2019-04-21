@@ -7,7 +7,7 @@
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800">
     <Window.Resources>
-        <DataTemplate DataType="{x:Type local:Entity}">
+        <DataTemplate DataType="{x:Type local:EntityViewModel}">
             <Grid Margin="3">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="100"/>
@@ -19,54 +19,19 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <TextBlock Margin="3" Grid.Column="0" Text="Name:"/>
-                <TextBox  Margin="3" Grid.Column="1" Text="{Binding Name}"/>
+                <TextBox  Margin="3" Grid.Column="1" Text="{Binding Entity.Name, UpdateSourceTrigger=PropertyChanged}"/>
 
-                <TextBlock Grid.Row="1" Margin="3" Grid.Column="0" Text="Property1:"/>
-                <TextBox  Grid.Row="1" Margin="3" Grid.Column="1" Text="{Binding Property1}"/>
+                <TextBlock Grid.Row="1" Margin="3" Grid.Column="0" Text="Property1 (not-cached):"/>
+                <TextBox  Grid.Row="1" Margin="3" Grid.Column="1" Text="{Binding Entity.Property1}"/>
 
-                <TextBlock Grid.Row="2" Margin="3" Grid.Column="0" Text="Property2:"/>
-                <TextBox  Grid.Row="2" Margin="3" Grid.Column="1" Text="{Binding Property2}"/>
 
-                <TextBlock Grid.Row="3" Margin="3" Grid.Column="0" Text="Property3:"/>
-                <TextBox  Grid.Row="3" Margin="3" Grid.Column="1" Text="{Binding Property3}"/>
+                <TextBlock Grid.Row="2" Margin="3" Grid.Column="0" Text="Collection:"/>
+                <ListBox  Grid.Row="2" Margin="3" Grid.Column="1" ItemsSource="{Binding Entity.Collection}" Height="100" />
 
-                <TextBlock Grid.Row="4" Margin="3" Grid.Column="0" Text="Property4:"/>
-                <TextBox  Grid.Row="4" Margin="3" Grid.Column="1" Text="{Binding Property4}"/>
-
-                <TextBlock Grid.Row="5" Margin="3" Grid.Column="0" Text="Property5:"/>
-                <TextBox  Grid.Row="5" Margin="3" Grid.Column="1" Text="{Binding Property5}"/>
-
-                <TextBlock Grid.Row="6" Margin="3" Grid.Column="0" Text="Property6:"/>
-                <TextBox  Grid.Row="6" Margin="3" Grid.Column="1" Text="{Binding Property6}"/>
-
-                <TextBlock Grid.Row="7" Margin="3" Grid.Column="0" Text="Property7:"/>
-                <TextBox  Grid.Row="7" Margin="3" Grid.Column="1" Text="{Binding Property7}"/>
-
-                <TextBlock Grid.Row="8" Margin="3" Grid.Column="0" Text="Property8:"/>
-                <TextBox  Grid.Row="8" Margin="3" Grid.Column="1" Text="{Binding Property8}"/>
-
-                <TextBlock Grid.Row="9" Margin="3" Grid.Column="0" Text="Property9:"/>
-                <TextBox  Grid.Row="9" Margin="3" Grid.Column="1" Text="{Binding Property9}"/>
-
-                <TextBlock Grid.Row="10" Margin="3" Grid.Column="0" Text="Property10:"/>
-                <TextBox  Grid.Row="10" Margin="3" Grid.Column="1" Text="{Binding Property10}"/>
-
-                <TextBlock Grid.Row="11" Margin="3" Grid.Column="0" Text="Property10:"/>
-                <ListBox  Grid.Row="11" Margin="3" Grid.Column="1" ItemsSource="{Binding Collection}" Height="100" />
-
-                <CheckBox Grid.Row="12" Content="Delete this item" IsChecked="{Binding IsDeleted}" />
+                <CheckBox Grid.Row="3" Grid.ColumnSpan="2" Content="Delete this item" IsChecked="{Binding IsDeleted}" />
             </Grid>
         </DataTemplate>
     </Window.Resources>
@@ -81,7 +46,7 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <TextBox x:Name="tbFilter" Grid.Row="0" Margin="5" TextChanged="TextBox_TextChanged"/>
-            <DataGrid Grid.Row="1" Margin="5" x:Name="dgMain" SelectionChanged="dgMain_SelectionChanged"></DataGrid>
+            <DataGrid Grid.Row="1" Margin="5" x:Name="dgMain" SelectionChanged="dgMain_SelectionChanged"/>
         </Grid>
         <Grid Grid.Column="1">
             <Grid.RowDefinitions>
@@ -91,13 +56,13 @@
             <TabControl Grid.Row="0" x:Name="tb1" MaxWidth="2000">
                 <TabControl.ItemTemplate>
                     <DataTemplate>
-                        <TextBlock Text="{Binding Identifier}"/>
+                        <TextBlock Text="{Binding Entity.Identifier}"/>
                     </DataTemplate>
                 </TabControl.ItemTemplate>
             </TabControl>
 
             <StackPanel Grid.Row="1" Orientation="Horizontal">
-            <Button x:Name="btnSave" Margin="3" HorizontalAlignment="Left" Click="btnSave_Click" >Save</Button>
+            <Button x:Name="btnSave" Margin="3" HorizontalAlignment="Left" Click="btnSave_Click">Save</Button>
             <Button x:Name="btnAdd" Margin="3" HorizontalAlignment="Left" Click="btnAdd_Click">Add</Button>
             </StackPanel>
         </Grid>

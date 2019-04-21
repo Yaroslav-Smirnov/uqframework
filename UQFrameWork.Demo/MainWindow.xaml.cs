@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Data;
 using System.Linq;
@@ -12,30 +11,20 @@ namespace UQFrameWork.Demo
     /// </summary>
     public partial class MainWindow : Window
     {
-        private readonly string _cacheFolder = @"C:\UQFramework.Demo\_Cache";
-        private readonly string _filesFolder = @"C:\UQFramework.Demo\Files";
+        private const string FilesFolder = @"C:\UQFramework.Demo\Files";
+        private const int NumberOfFilesToGenerate = 100000;
 
-        private readonly List<Item> _mainList;
-
-        private ObservableCollection<Entity> _selectedEntities;
-        private IList<Entity> _deletedEntities = new List<Entity>();
+        private ObservableCollection<EntityViewModel> _selectedEntities;
 
         public MainWindow()
         {
-            Generator.GenerateFiles(_filesFolder, 100000, false);
+            Generator.GenerateFiles(FilesFolder, NumberOfFilesToGenerate, false);
 
             InitializeComponent();
-
-            var stopwatch = new System.Diagnostics.Stopwatch();
-            stopwatch.Start();
 
             var context = new DataStoreContext();
 
             var list = context.Entities.Select(x => new Item { Id = x.Identifier, Name = x.Name }).ToList();
-
-            stopwatch.Stop();
-
-            _mainList = list;
 
             dgMain.ItemsSource = list;
         }
@@ -43,13 +32,6 @@ namespace UQFrameWork.Demo
         private void TextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
         {
             UpdateGridSource();
-        }
-
-        private class Item
-        {
-            public string Id { get; set; }
-
-            public string Name { get; set; }
         }
 
         private void dgMain_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -60,17 +42,9 @@ namespace UQFrameWork.Demo
 
             var context = new DataStoreContext();
 
-            var stopWatch = new System.Diagnostics.Stopwatch();
+            _selectedEntities = new ObservableCollection<EntityViewModel>(context.Entities.Where(x => selectedIndexes.Contains(x.Identifier)).Select(x => new EntityViewModel(x, false)).ToList());
 
-            stopWatch.Start();
-
-            _selectedEntities = new ObservableCollection<Entity>(context.Entities.Where(x => selectedIndexes.Contains(x.Identifier)).ToList());
-
-            stopWatch.Stop();
-
-            System.Diagnostics.Debug.WriteLine(stopWatch.ElapsedMilliseconds);
-
-            tb1.ItemsSource = _selectedEntities; // new[] { _selectedEntity };
+            tb1.ItemsSource = _selectedEntities;
 
             btnSave.Content = $"Save ({_selectedEntities.Count})";
 
@@ -84,14 +58,14 @@ namespace UQFrameWork.Demo
         {
             var context = new DataStoreContext();
 
-            foreach (var x in _selectedEntities)
+            foreach (var x in _selectedEntities.Where(x => !(x.IsNew && x.IsDeleted)))
             {
-                if (x.IsAdded)
-                    context.Entities.Add(x);
+                if (x.IsNew)
+                    context.Entities.Add(x.Entity);
                 else if (x.IsDeleted)
-                    context.Entities.Remove(x);
+                    context.Entities.Remove(x.Entity);
                 else
-                    context.Entities.Update(x);
+                    context.Entities.Update(x.Entity);
             }
 
             context.SaveChanges();
@@ -103,41 +77,10 @@ namespace UQFrameWork.Demo
         {
             var context = new DataStoreContext();
 
-            var stopWatch = new System.Diagnostics.Stopwatch();
-
-            stopWatch.Start();
-
             var list = context.Entities
                              .Where(x => (x.Name ?? string.Empty).IndexOf(tbFilter.Text, StringComparison.InvariantCultureIgnoreCase) >= 0)
                              .Select(x => new Item { Id = x.Identifier, Name = x.Name })
-                             .ToList(); // removing ToList() causes a sort of recursive cache access so that exeception happens in MemoryCache on attempt to acquire SlimReaderLock
-
-            //stopWatch.Stop();
-            //
-            //System.Diagnostics.Debug.WriteLine($"{stopWatch.ElapsedMilliseconds}");
-
-            //stopWatch.Start();
-
-            //var count = context.Entities
-            //                 //.Select(x => new Item { Id = x.Identifier, Name = x.Name })
-            //                 .Count(x => (x.Name ?? string.Empty).IndexOf(tbFilter.Text, StringComparison.InvariantCultureIgnoreCase) >= 0);
-
-            stopWatch.Stop();
-
-            System.Diagnostics.Debug.WriteLine($"{stopWatch.ElapsedMilliseconds}");
-
-
-            //var range = Enumerable.Range(1, 20000).Select(i => i.ToString());
-            //
-            //var stopWatch = new System.Diagnostics.Stopwatch();
-            //
-            //stopWatch.Start();
-            //
-            //var newList = context.Entities.Where(x => range.Contains(x.Identifier)).Select(x => new Item { Id = x.Identifier, Name = x.Name }).ToList();
-            //
-            //stopWatch.Stop();
-            //
-            //System.Diagnostics.Debug.WriteLine($"{stopWatch.ElapsedMilliseconds}"); //Average ~40ms
+                             .ToList();
 
             dgMain.ItemsSource = list;
         }
@@ -145,12 +88,20 @@ namespace UQFrameWork.Demo
         private void btnAdd_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedEntities == null)
-                _selectedEntities = new ObservableCollection<Entity>();
+                _selectedEntities = new ObservableCollection<EntityViewModel>();
 
-            _selectedEntities.Add(new Entity { IsAdded = true });
+            var entity = new EntityViewModel(new Entity(), true);
+
+            _selectedEntities.Add(entity);
 
             tb1.ItemsSource = _selectedEntities;
+        }
 
+        private class Item
+        {
+            public string Id { get; set; }
+
+            public string Name { get; set; }
         }
     }
 }
