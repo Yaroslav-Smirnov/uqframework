@@ -134,9 +134,82 @@ Cached properties are kept in memory along with the item identifier so that when
 UQ keeps the cache in sync by updating on each CRUD operation (only added, changed or deleted items are updated).
 
 To enable caching in UQ Framework the following needs to be done
-* DAO must implement *IDataSourceEnumerator<>* or *IDataSourceEnumeratorEx<>* interface
 * Cache storage must be configured in App.config
+* DAO must implement *IDataSourceEnumerator<>* or *IDataSourceEnumeratorEx<>* interface
 * Each cached property must be decorated with *Cached* attribute. 
 
 ### Cache configuration
-(TBD)
+To configure cache storage add *h-cache* section to your app.config file. Then you must specify *type* and set *enabled* to *true*. As .Net standard library UQFramework itself supports storing the cache in text files so to use this built-in option set type to *"UQFramework.Cache.Providers.TextFileCacheProvider`1, UQFramework"*. Alternatively, you can implement your own cache storage by inheriting from PersistentCacheProviderBase<T>.
+
+**Example**
+```XML
+<?xml version="1.0" encoding="utf-8" ?>
+<configuration>
+  <configSections>
+    <section name="uqframework" type="UQFramework.Configuration.UQConfiguration, UQFramework"/>
+  </configSections>
+  <startup>
+    <supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.7.2" />
+  </startup>
+
+  <uqframework>
+    <h-cache enabled ="true" type="UQFramework.Cache.Providers.TextFileCacheProvider`1, UQFramework">
+      <add name="folder" value ="C:\UQFramework.Demo\_Cache"/>
+    </h-cache>
+  </uqframework>
+</configuration>
+```
+### Data Access Component changes
+When cache is enabled or a new data store is connected UQFramework needs to build cache. This is mostly a one-time operation, although there might be occasions when cache re-build is required, so it can be called manually by calling *NotifyCacheExpired* or *NotifyCacheItemsExpired* methods of *UQContext*.
+
+In order to build/(full rebuild) cache UQFramework retrieves all the items from datastore which means that the data access component must provide a list of all the items in the storage. It can be achived by implementing *IDataSourceEnumerator<>* or *IDataSourceEnumeratorEx<>*
+
+**Example**
+
+```C#
+public IEnumerable<string> GetAllEntitiesIdentifiers()
+{
+    return Directory.EnumerateFiles(_folder, "*.json").Select(Path.GetFileNameWithoutExtension);
+}
+
+public int Count()
+{
+    return Directory.EnumerateFiles(_folder, "*.json").Count();
+}
+```
+#### DaoVersion attribute
+The DaoVersion attribute allows to tell UQFramework that data provided by the data access component is changed significantly and the current cache is no more relevant. So this attribute could be usefull when a new application version is deployed and existing cache needs to be rebuild.
+
+```C#
+[DaoVersion("1.1.0.0")]
+internal class DaoFile : IDataSourceReader<Entity>, IDataSourceEnumerator<Entity>, IDataSourceWriter<Entity>, INeedDataSourceProperties
+```
+At the first usage UQFramework checks if data access component version stored in cache matches the value of the attribute and rebuild the cache if not. See also [Cache Rebuild Behaviour](#cache-rebuild-behaviour)
+
+### Cached property
+To put a property in cache decorate it with *Cached* attribute. 
+Only properties which satisfy the following rules can be put in cache.
+* The property must have public setter and getter
+* The property must be of a value type or string or *IEnumerable* of a value type or string.
+
+**Example**
+```C#
+public class Entity
+{
+    [Key]
+    public string Identifier { get; set; }
+
+    [Cached]
+    public string Name { get; set; }
+
+    public string Property1 { get; set; }
+
+    [Cached]
+    public IEnumerable<string> Collection { get; set; }
+}
+```
+
+### Cache rebuild behaviour
+UQFramework will automatically rebuild the whole cache for an entity in the following cases:
+* Cached properties are changed
+* DaoVersion attribute have a different value
