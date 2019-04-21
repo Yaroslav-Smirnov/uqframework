@@ -125,7 +125,23 @@ After all the previous steps are done data can be filtered and projected using L
 See UQFramework.Demo project for more details.
 
 ## CRUD Operations
-(TBD)
+For CRUD operations use the corresponding methods of the context and then call *SaveChanges()*:
+
+```C#
+var context = new DataStoreContext();
+var item1 = context.Entities.FirstOrDefault(x => x.Identifier == "1");
+var item2 = context.Entities.FirstOrDefault(x => x.Identifier == "2");
+
+var newItem = new Entity { Name = "New Name" };
+item1.Name = "Changed name for item 1";
+
+context.Entities.Add(newItem);
+context.Entities.Update(item1);
+context.Entities.Delete(item2);
+
+context.SaveChanges();
+
+```
 
 ## Caching
 Filtering operations (such as Where clause and so on) can take a lot of time in case of large data stores for each item needs to be loaded and checked for meeting the filter criteria. UQ Framework allows to improve performance of such operations significantly by caching of a subset of entity properties. 
