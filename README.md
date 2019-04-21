@@ -184,7 +184,9 @@ The DaoVersion attribute allows to tell UQFramework that data provided by the da
 [DaoVersion("1.1.0.0")]
 internal class DaoFile : IDataSourceReader<Entity>, IDataSourceEnumerator<Entity>, IDataSourceWriter<Entity>, INeedDataSourceProperties
 ```
-At the first usage UQFramework checks if data access component version stored in cache matches the value of the attribute and rebuild the cache if not. See also [Cache Rebuild Behaviour](#cache-rebuild-behaviour)
+At the first usage UQFramework checks if data access component version stored in cache matches the value of the attribute and rebuild the cache if not. If the attribute is not specified its value considered equal to 1.0.0.0 
+
+See also [Cache Rebuild Behaviour](#cache-rebuild-behaviour)
 
 ### Cached property
 To put a property in cache decorate it with *Cached* attribute. 
@@ -210,6 +212,7 @@ public class Entity
 ```
 
 ### Cache rebuild behaviour
-UQFramework will automatically rebuild the whole cache for an entity in the following cases:
-* Cached properties are changed
-* DaoVersion attribute have a different value
+When an application version is upgraded or downgraded UQFramework attempts to use existing cache to avoid potentially costly operation of cache rebuild. However, to avoid the data discrepancy UQFramework automatically rebuilds the whole cache for an entity in the following cases:
+* Cached properties are changed;
+* Data Access Component for the entity collection is changed;
+* Data Access Component is still the same but its DaoVersion attribute has a different value;
