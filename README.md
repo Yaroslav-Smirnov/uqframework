@@ -1,7 +1,7 @@
 # UQframework
-UQFramework .Net Standard Library which allows linq to any data store similiar to Linq2SQL and Entity Framework.
+UQFramework allows linq to any data store in a similiar way as Linq2SQL and Entity Framework.
 
-The library has been developed within [LEAPDev](https://leapdev.io/) and is used on various projects to access NoSql storages such as files, S3, Rest API etc.
+The library is based on .Net Standard 2.0 which means it can be used in .Net Framework and .Net Core projects.
 
 # Getting Started
 
