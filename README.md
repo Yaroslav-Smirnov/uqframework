@@ -159,9 +159,10 @@ To enable caching in UQ Framework the following needs to be done
 * Each cached property must be decorated with *Cached* attribute. 
 
 ### Cache configuration
-To configure cache storage add *h-cache* section to your app.config file. Then you must specify *type* and set *enabled* to *true*. As .Net standard library UQFramework itself supports storing the cache in text files so to use this built-in option set type to *"UQFramework.Cache.Providers.TextFileCacheProvider`1, UQFramework"*. Alternatively, you can implement your own cache storage by inheriting from PersistentCacheProviderBase<T>.
+To configure cache storage add *h-cache* section to your app.config file. Then you must specify *type* and set *enabled* to *true*. Out of the box UQFramework supports storing the cache in text files (type *"UQFramework.Cache.Providers.TextFileCacheProvider`1, UQFramework"*) or in SQL Server database (type *"UQFramework.Cache.Providers.SqlCacheProvider`1, UQFramework"*). 
+Alternatively, you can implement your own cache storage by inheriting from PersistentCacheProviderBase<T>.
 
-**Example**
+**Example configuration to store cache in text files**
 ```XML
 <?xml version="1.0" encoding="utf-8" ?>
 <configuration>
@@ -179,6 +180,26 @@ To configure cache storage add *h-cache* section to your app.config file. Then y
   </uqframework>
 </configuration>
 ```
+
+**Example configuration to store cache in sql files**
+```XML
+<?xml version="1.0" encoding="utf-8" ?>
+<configuration>
+  <configSections>
+    <section name="uqframework" type="UQFramework.Configuration.UQConfiguration, UQFramework"/>
+  </configSections>
+  <startup>
+    <supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.7.2" />
+  </startup>
+
+  <uqframework>
+    <h-cache enabled ="true" type="UQFramework.Cache.Providers.SqlCacheProvider`1, UQFramework">
+      <add name="connectionstring" value ="Data Source=.;Integrated Security=True"/>
+    </h-cache>
+  </uqframework>
+</configuration>
+```
+
 ### Data Access Component changes
 When cache is enabled or a new data store is connected UQFramework needs to build cache. This is mostly a one-time operation, although there might be occasions when cache re-build is required, so it can be called manually by calling *NotifyCacheExpired* or *NotifyCacheItemsExpired* methods of *UQContext*.
 
