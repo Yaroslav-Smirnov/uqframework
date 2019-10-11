@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace UQFramework.Cache
 {
-    internal interface IMemoryCacheService<T>
+    internal interface ICacheService<T>
     {
         IEnumerable<T> GetAllCache();
 

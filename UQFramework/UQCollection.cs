@@ -22,7 +22,7 @@ namespace UQFramework
         internal UQCollection()
         {
             _identifierGetter = GeneralHelper.GetIdentiferGetter<T>(out _keyProperty);
-        }
+		}		
 
         void IUQCollectionInitializer.Initialize(object dataAccessObject, object cacheProvider)
         {
@@ -125,125 +125,61 @@ namespace UQFramework
 
         IEnumerable<T> ISavableData<T>.PendingAdd => _addedItems;
 
-        private IQueryProvider GetQueryProvider()
+		private IQueryProvider GetQueryProvider()
         {
             //var queryContext = new QueryContext<T>(GetEntitiesConsideringPending, GetEntitiesIdentifiersConsideringPending, GetEntitiesConsideringPending);
             return new QueryProvider(this);
         }
 
 
-        #region Getting Entities By identifiers
+		void ISavableDataEx.Delete()
+		{
+			if (!_deletedItems.Any())
+				return;
 
-        private IEnumerable<T> GetEntitiesConsideringPending(IEnumerable<string> identifiers, bool cacheUseAllowed)
-        {
-            // The method is called from QueryContext. 
-            // The contract is: if identifiers is null then all the collection is queried
+			// Note: assume that the data access object will take care of updating order
+			if (_dataAccessObject is IDataSourceBulkWriter<T> bulkWriter)
+			{
+				bulkWriter.UpdateDataSource(Enumerable.Empty<T>(), Enumerable.Empty<T>(), _deletedItems.Values);
+				return;
+			}
 
-            var savable = (ISavableData<T>)this;
+			// Note: it is assumed that if data access object does not support bulk operations then order is not essential and parallel is fine
+			if (_dataAccessObject is IDataSourceWriter<T> justWriter)
+			{
+				// Delete
+				Parallel.ForEach(_deletedItems, item => justWriter.DeleteEntity(item.Value));
+			}
+		}
 
-            var pendingItems = savable.GetAllPendingChanges().ToList();
-            var identifiersToExclude = pendingItems.Select(_identifierGetter);
+		void ISavableDataEx.CreateAndUpdate()
+		{
+			// if there is nothing to add, update or delete then return
+			if (!_updatedItems.Any() && !_addedItems.Any())
+				return;
 
-            if (identifiers == null)
-            {
-                var entities = GetAllEntities(cacheUseAllowed)
-                                    .Where(x => !identifiersToExclude.Contains(_identifierGetter(x)));
+			if (_dataAccessObject is IDataSourceBulkWriter<T> bulkWriter)
+			{
+				bulkWriter.UpdateDataSource(_addedItems, _updatedItems.Values, Enumerable.Empty<T>());
+				return;
+			}
 
-                return savable.CombineWithPendingChanges(entities, null);
-            }
+			if (_dataAccessObject is IDataSourceWriter<T> justWriter)
+			{
+				// YSV: assume that parrallel is safe which is true in case of files but 
+				// might not be true in case of SQL (e.g. self-referencing table where order is essential)
 
-            var filter = identifiers.Except(identifiersToExclude);
+				// TODO: check self-referencing properties and run in parallel only if there is no problem
 
-            if (!filter.Any())
-                return savable.CombineWithPendingChanges(Enumerable.Empty<T>(), x => identifiers.Contains(_identifierGetter(x)));
+				// 2. Add
+				Parallel.ForEach(_addedItems, justWriter.AddEntity);
 
-            return savable.CombineWithPendingChanges(GetEntities(filter, cacheUseAllowed), x => identifiers.Contains(_identifierGetter(x)));
-        }
+				// 3. Update
+				Parallel.ForEach(_updatedItems, item => justWriter.UpdateEntity(item.Value));
+			}
+		}
 
-        private IEnumerable<T> GetEntities(IEnumerable<string> identifiers, bool cacheUseAllowed)
-        {
-            if (_cachedDataProvider != null && cacheUseAllowed)
-                return _cachedDataProvider.GetEntitiesBasedOnCache(identifiers);
-
-            return GetEntitiesFromDao(identifiers);
-        }
-
-        private IEnumerable<T> GetAllEntities(bool cacheUseAllowed)
-        {
-            if (_cachedDataProvider != null && cacheUseAllowed)
-                return _cachedDataProvider.GetEntitiesBasedOnCache();
-
-            return GetAllEntitiesFromDao();
-        }
-
-        private IEnumerable<T> GetAllEntitiesFromDao()
-        {
-            if (_dataAccessObject is IDataSourceEnumeratorEx<T> dataSourceReaderAll)
-                return dataSourceReaderAll.GetAllEntities();
-
-            if (_dataAccessObject is IDataSourceEnumerator<T> dataSourceEnumerator)
-            {
-                var identifiers = dataSourceEnumerator.GetAllEntitiesIdentifiers();
-                return GetEntitiesFromDao(identifiers);
-            }
-
-            throw new InvalidOperationException($"DataAccessObject {_dataAccessObject.GetType()} for type {typeof(T).FullName} does not implement {nameof(IDataSourceEnumerator<T>)}");
-        }
-
-        //YSV: forceNonParallel - quick patch for FirstOrDefault(), need to proper refactor then
-        private IEnumerable<T> GetEntitiesFromDao(IEnumerable<string> identifiers)
-        {
-            if (_dataAccessObject is IDataSourceBulkReader<T> bulkReader)
-                return bulkReader.GetEntities(identifiers);
-
-            if (_dataAccessObject is IDataSourceReader<T> justReader)
-                return identifiers.AsParallel().Select(justReader.GetEntity).Where(x => x != null);
-
-            throw new InvalidOperationException($"DataAccessObject {_dataAccessObject.GetType()} for type {typeof(T).FullName} does not implement neither {nameof(IDataSourceBulkReader<T>)} nor {nameof(IDataSourceReader<T>)}");
-        }
-
-        #endregion
-
-        protected virtual void OnBeforeSave()
-        {
-
-        }
-
-        protected virtual void SavePendingChangesCore()
-        {
-            // if there is nothing to add, update or delete then return
-            if (!_deletedItems.Any() && !_updatedItems.Any() && !_addedItems.Any())
-                return;
-
-            if (_dataAccessObject is IDataSourceBulkWriter<T> bulkWriter)
-            {
-                bulkWriter.UpdateDataSource(_addedItems, _updatedItems.Values, _deletedItems.Values);
-                return;
-            }
-
-            if (_dataAccessObject is IDataSourceWriter<T> justWriter)
-            {
-                // YSV: assume that parrallel is safe which is true in case of files but 
-                // might not be true in case of SQL (e.g. self-referencing table where order is essential)
-
-                // 1. Delete
-                Parallel.ForEach(_deletedItems, item => justWriter.DeleteEntity(item.Value));
-
-                // 2. Add
-                Parallel.ForEach(_addedItems, justWriter.AddEntity);
-
-                // 3. Update
-                Parallel.ForEach(_updatedItems, item => justWriter.UpdateEntity(item.Value));
-            }
-        }
-
-        void ISavableDataEx.SaveChanges()
-        {
-            OnBeforeSave();
-            SavePendingChangesCore();
-        }
-
-        void ISavableDataEx.UpdateCacheWithPendingChanges()
+		void ISavableDataEx.UpdateCacheWithPendingChanges()
         {
             if (!(_cachedDataProvider is ICachedDataProviderEx cachedDataProviderEx))
                 return;

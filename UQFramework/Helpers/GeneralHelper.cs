@@ -16,8 +16,19 @@ namespace UQFramework.Helpers
             if (keyProperty == null)
                 throw new InvalidOperationException($"Can't find property with [Key] attribute in type {typeof(T)}");
 
-            return (Func<T, string>)Delegate.CreateDelegate(typeof(Func<T, string>), keyProperty.GetMethod);
+			return GetStringPropertyGetter<T>(keyProperty);
         }
+
+		public static Func<T,string> GetStringPropertyGetter<T>(PropertyInfo propertyInfo)
+		{
+			if (propertyInfo == null)
+				throw new ArgumentNullException(nameof(propertyInfo));
+
+			if (propertyInfo.GetMethod == null)
+				throw new InvalidOperationException($"Property {propertyInfo.Name} in type {typeof(T)} does not have a public getter");
+
+			return (Func<T, string>)Delegate.CreateDelegate(typeof(Func<T, string>), propertyInfo.GetMethod);
+		}
 
         public static IEnumerable<PropertyInfo> GetPropertiesHavingAttribute(Type objectType, Type attributeType)
         {

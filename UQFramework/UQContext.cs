@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using UQFramework.Attributes;
 using UQFramework.Cache;
@@ -9,141 +10,190 @@ using UQFramework.DAO;
 
 namespace UQFramework
 {
-    public abstract class UQContext
-    {
-        private readonly ITransactionService _transactionService;
-        private readonly IReadOnlyDictionary<string, object> _properties;
-        private readonly string _dataStoreSetId;
+	public abstract class UQContext
+	{
+		private readonly ITransactionService _transactionService;
+		private readonly IReadOnlyDictionary<string, object> _properties;
+		private readonly string _dataStoreSetId;
+		private IList<Type> _savingOrder;
 
-        protected UQContext(string dataStoreSetId) : this(dataStoreSetId, null, null)
-        {
-        }
+		protected UQContext(string dataStoreSetId) : this(dataStoreSetId, null, null)
+		{
+		}
 
-        protected UQContext(string dataStoreSetId, ITransactionService transactionService) : this(dataStoreSetId, transactionService, null)
-        {
-        }
+		protected UQContext(string dataStoreSetId, ITransactionService transactionService) : this(dataStoreSetId, transactionService, null)
+		{
+		}
 
-        protected UQContext(string dataStoreSetId, IReadOnlyDictionary<string, object> properties) : this(dataStoreSetId, null, properties)
-        {
-        }
+		protected UQContext(string dataStoreSetId, IReadOnlyDictionary<string, object> properties) : this(dataStoreSetId, null, properties)
+		{
+		}
 
-        protected UQContext(string dataStoreSetId, ITransactionService transactionService, IReadOnlyDictionary<string, object> properties)
-        {
-            if (string.IsNullOrEmpty(dataStoreSetId))
-                throw new ArgumentNullException(nameof(dataStoreSetId));
+		protected UQContext(string dataStoreSetId, ITransactionService transactionService, IReadOnlyDictionary<string, object> properties)
+		{
+			if (string.IsNullOrEmpty(dataStoreSetId))
+				throw new ArgumentNullException(nameof(dataStoreSetId));
 
-            _dataStoreSetId = dataStoreSetId;
-            _transactionService = transactionService;
-            _properties = properties;
+			_dataStoreSetId = dataStoreSetId;
+			_transactionService = transactionService;
+			_properties = properties;
 
-            InitializeCollections();
-        }
+			InitializeCollections();
+		}
 
-        private IEnumerable<ISavableDataEx> GetCollections()
-        {
-            return GetType().GetProperties()
-                        .Where(p => p.PropertyType.GetGenericTypeDefinition() == typeof(IUQCollection<>))
-                        .Select(p => (ISavableDataEx)p.GetValue(this))
-                        .Where(c => c != null); //pick only initialized collections
-        }
+		private IEnumerable<ISavableDataEx> GetCollections()
+		{
+			return GetType().GetProperties()
+						.Where(p => p.PropertyType.GetGenericTypeDefinition() == typeof(IUQCollection<>))
+						.Select(p => (ISavableDataEx)p.GetValue(this))
+						.Where(c => c != null) //; //pick only initialized collections
+						.OrderBy(x =>
+						{
+							var enityType = x.GetType().GenericTypeArguments[0];
+							return _savingOrder.IndexOf(enityType);
+						});
+		}
 
-        private void InitializeCollections()
-        {
-            var collectionsToInitialize = GetType().GetProperties()
-                    .Where(p => p.PropertyType.GetGenericTypeDefinition() == typeof(IUQCollection<>))
-                    .Select(p => new
-                    {
-                        Property = p,
-                        Attribute = p.GetCustomAttributes(typeof(DataAccessObjectAttribute), false).FirstOrDefault() as DataAccessObjectAttribute
-                    })
-                    .Where(p => p.Attribute != null);
+		private void InitializeCollections()
+		{
+			var collectionsToInitialize = GetType().GetProperties()
+					.Where(p => p.PropertyType.GetGenericTypeDefinition() == typeof(IUQCollection<>))
+					.Select(p => new
+					{
+						Property = p,
+						Attribute = p.GetCustomAttributes(typeof(DataAccessObjectAttribute), false).FirstOrDefault() as DataAccessObjectAttribute
+					})
+					.Where(p => p.Attribute != null);
 
-            foreach (var item in collectionsToInitialize)
-            {
-                var newCollection = Activator.CreateInstance(typeof(UQCollection<>).MakeGenericType(item.Property.PropertyType.GenericTypeArguments), true);
-                var dao = Activator.CreateInstance(item.Attribute.DataAccessObjectType);
+			var relations = new Dictionary<Type, IList<Type>>();
 
-                if (dao is INeedDataSourceProperties dataSourcePropertiesRequestor)
-                    dataSourcePropertiesRequestor.SetProperties(_properties);
+			foreach (var item in collectionsToInitialize)
+			{
+				var entityType = item.Property.PropertyType.GenericTypeArguments[0];
 
-                var persistentCache = item.Attribute.DisableCache ? null : CacheInitializer.GetCachedDataProvider(item.Property.PropertyType.GenericTypeArguments[0], _dataStoreSetId, UQConfiguration.Instance.HorizontalCacheConfiguration as IHorizontalCacheConfigurationInternal, dao);
+				var newCollection = Activator.CreateInstance(typeof(UQCollection<>).MakeGenericType(entityType), true);
+				var dao = Activator.CreateInstance(item.Attribute.DataAccessObjectType);
 
-                (newCollection as IUQCollectionInitializer).Initialize(dao, persistentCache);
-                item.Property.SetValue(this, newCollection);
-            }
-        }
+				if (dao is INeedDataSourceProperties dataSourcePropertiesRequestor)
+					dataSourcePropertiesRequestor.SetProperties(_properties);
 
-        public void SaveChanges(string commitMessage = null)
-        {
-            if (_transactionService != null)
-                _transactionService.BeginTransaction();
+				var persistentCache = item.Attribute.DisableCache ? null : CacheInitializer.GetCachedDataProvider(entityType, _dataStoreSetId, UQConfiguration.Instance.HorizontalCacheConfiguration as IHorizontalCacheConfigurationInternal, dao);
 
-            try
-            {
-                // get collections
-                var collections = GetCollections().ToList();
-                // 1. Save changes
+				(newCollection as IUQCollectionInitializer).Initialize(dao, persistentCache);
+				item.Property.SetValue(this, newCollection);
 
-                foreach (var collection in collections)
-                    collection.SaveChanges();
+				// get 'parent' entities:
+				var entityRelations = entityType.GetProperties()
+											.Select(p => p.GetCustomAttribute(typeof(EntityIdentifierAttribute)))
+											.Where(a => a != null)
+											.OfType<EntityIdentifierAttribute>()
+											.Select(x => x.EntityType)
+											.Where(x => x != entityType) // exclude self references
+											.ToList();
 
-                // 2. Update Cache
-                Parallel.ForEach(collections, c => c.UpdateCacheWithPendingChanges());
-                //foreach (var collection in collections)
-                //    collection.UpdateCacheWithPendingChanges();
+				relations[entityType] = entityRelations.ToList();
+			}
 
-                // 3. Commit changes
-                if (_transactionService != null)
-                    _transactionService.CommitChanges(commitMessage);
-            }
-            catch
-            {
-                if (_transactionService != null)
-                    _transactionService.Rollback();
+			BuildRelationsOrder(relations);
+		}
 
-                throw;
-            }
-        }
+		private void BuildRelationsOrder(IDictionary<Type, IList<Type>> dict)
+		{
+			// not expecting big collections here
+			_savingOrder = new List<Type>();			
+			// find an item which does not have
+			while (dict.Any()) // self-referencing types here
+			{
+				var nextType = dict.FirstOrDefault(x => !x.Value.Any()).Key;
 
-        public void NotifyCacheItemsExpired(string uqCollectionName, IEnumerable<string> identifiers)
-        {
-            var prop = GetType().GetProperty(uqCollectionName);
+				if (nextType == null)
+					throw new InvalidOperationException("There is circular references");
 
-            if (prop == null)
-                return;
+				// add 
+				_savingOrder.Add(nextType);
 
-            var collection = prop.GetValue(this);
+				// remove
+				dict.Remove(nextType);
+				foreach (var d in dict)
+					d.Value.Remove(nextType);
+			}
+		}
 
-            if (!(collection is IUQCollectionCacheRebuilder cacheRebuilder))
-                return;
+		public void SaveChanges(string commitMessage = null)
+		{
+			if (_transactionService != null)
+				_transactionService.BeginTransaction();
 
-            cacheRebuilder.NotifyCacheItemsExpired(identifiers);
-        }
+			try
+			{
+				// get collections
+				var collections = GetCollections().ToList();
+				// 1. Save changes maintaining dependencies order
+				// 1.a  Delete entities 
+				foreach (var collection in collections.Reverse<ISavableDataEx>())
+					collection.Delete();
 
-        public void NotifyCacheExpired(string uqCollectionName)
-        {
-            var prop = GetType().GetProperty(uqCollectionName);
+				// 1.b  Create and update 
+				foreach (var collection in collections)
+					collection.CreateAndUpdate();
 
-            if (prop == null)
-                return;
+				// 2. Update Cache
+				Parallel.ForEach(collections, c => c.UpdateCacheWithPendingChanges());
+				//foreach (var collection in collections)
+				//    collection.UpdateCacheWithPendingChanges();
 
-            var collection = prop.GetValue(this);
+				// 3. Commit changes
+				if (_transactionService != null)
+					_transactionService.CommitChanges(commitMessage);
+			}
+			catch
+			{
+				if (_transactionService != null)
+					_transactionService.Rollback();
 
-            if (!(collection is IUQCollectionCacheRebuilder cacheRebuilder))
-                return;
+				throw;
+			}
+		}
 
-            cacheRebuilder.NotifyCacheExpired();
-        }
+		public void NotifyCacheItemsExpired(string uqCollectionName, IEnumerable<string> identifiers)
+		{
+			var prop = GetType().GetProperty(uqCollectionName);
 
-        public void NotifyCacheExpiredAllCollections()
-        {
-            var collections = GetCollections().ToList();
+			if (prop == null)
+				return;
 
-            Parallel.ForEach(collections, c =>
-            {
-                if (c is IUQCollectionCacheRebuilder cacheRebuilder)
-                    cacheRebuilder.NotifyCacheExpired();
-            });
-        }
-    }
+			var collection = prop.GetValue(this);
+
+			if (!(collection is IUQCollectionCacheRebuilder cacheRebuilder))
+				return;
+
+			cacheRebuilder.NotifyCacheItemsExpired(identifiers);
+		}
+
+		public void NotifyCacheExpired(string uqCollectionName)
+		{
+			var prop = GetType().GetProperty(uqCollectionName);
+
+			if (prop == null)
+				return;
+
+			var collection = prop.GetValue(this);
+
+			if (!(collection is IUQCollectionCacheRebuilder cacheRebuilder))
+				return;
+
+			cacheRebuilder.NotifyCacheExpired();
+		}
+
+		public void NotifyCacheExpiredAllCollections()
+		{
+			var collections = GetCollections().ToList();
+
+			Parallel.ForEach(collections, c =>
+			{
+				if (c is IUQCollectionCacheRebuilder cacheRebuilder)
+					cacheRebuilder.NotifyCacheExpired();
+			});
+		}
+	}
 }

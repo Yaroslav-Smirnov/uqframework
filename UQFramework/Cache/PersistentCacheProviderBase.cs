@@ -14,14 +14,17 @@ namespace UQFramework.Cache
         private readonly IDataSourceEnumerator<T> _dataSourceEnumerator;
         private readonly Func<T, string> _keyGetter;
         protected readonly IEnumerable<PropertyInfo> _cachedProperties;
+		protected readonly string _dataStoreSetId;
 
-        public PersistentCacheProviderBase(object dataSourceReader, IEnumerable<PropertyInfo> cachedProperties)
+        public PersistentCacheProviderBase(string dataStoreSetId, object dataSourceReader, IEnumerable<PropertyInfo> cachedProperties)
         {
             if (dataSourceReader == null)
                 throw new ArgumentNullException(nameof(dataSourceReader));
 
-            _dataSourceEnumerator = (dataSourceReader as IDataSourceEnumerator<T>)
-                ?? throw new InvalidOperationException("DataAccessObject must implement IDataSourceReaderAll in order to use persistent cache");
+			_dataStoreSetId = dataStoreSetId;
+
+			_dataSourceEnumerator = (dataSourceReader as IDataSourceEnumerator<T>)
+                ?? throw new InvalidOperationException("DataAccessObject must implement IDataSourceEnumerator in order to use persistent cache");
 
             ValidateCacheProperties(cachedProperties);
             _cachedProperties = cachedProperties;
@@ -43,15 +46,17 @@ namespace UQFramework.Cache
 
         protected abstract IDictionary<string, T> ReadAllDataFromCache();
 
-        protected string CachedPropertiesString => string.Join(":", _cachedProperties
+		public abstract DateTimeOffset LastChanged { get; }
+
+		protected string CachedPropertiesString => string.Join(":", _cachedProperties
             .OrderBy(p => p.Name)
             .ThenBy(p => p.PropertyType.FullName)
             .Select(p => $"{p.Name}|{p.PropertyType}")
             );
 
-        public string UniqueCacheKey => this.GetType().FullName + (_dataSourceReader?.GetType() ?? _dataSourceBulkReader.GetType()).FullName;
+        public string UniqueCacheKey => _dataStoreSetId + this.GetType().FullName + (_dataSourceReader?.GetType() ?? _dataSourceBulkReader.GetType()).FullName;
 
-        public void FullRebuild()
+		public void FullRebuild()
         {
             var dict = default(IDictionary<string, T>);
             if (_dataSourceEnumerator is IDataSourceEnumeratorEx<T> dataSourceEnumeratorEx)

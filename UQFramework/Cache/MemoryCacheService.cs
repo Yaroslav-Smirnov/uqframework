@@ -6,11 +6,12 @@ using System.Threading;
 
 namespace UQFramework.Cache
 {
-    internal class MemoryCacheService<T> : IMemoryCacheService<T>, IRefreshableData
+    internal class MemoryCacheService<T> : ICacheService<T>, IRefreshableData
     {
         private readonly ReaderWriterLockSlim _cacheLock = new ReaderWriterLockSlim();
         private readonly IPersistentCacheProvider<T> _cacheProvider;
         private readonly string _cacheKey;
+		private readonly string _cacheTimeStampKey;
 
         public MemoryCacheService(IPersistentCacheProvider<T> cacheProvider)
         {
@@ -18,7 +19,8 @@ namespace UQFramework.Cache
                 throw new ArgumentNullException(nameof(cacheProvider));
 
             _cacheKey = cacheProvider.UniqueCacheKey;
-            _cacheProvider = cacheProvider;
+			_cacheTimeStampKey = $"Time{_cacheKey}";
+			_cacheProvider = cacheProvider;
         }
 
         public void NotifyUpdated(IEnumerable<string> identifiers)
@@ -88,11 +90,11 @@ namespace UQFramework.Cache
             return ReadAllCache(d => d.Values.Where(filter));
         }
 
-        public void NotifyFullRefreshRequired()
+        public void NotifyCacheExpired()
         {
             var cache = MemoryCache.Default;
             cache.Remove(_cacheKey);
-            _cacheProvider.FullRebuild();
+            cache.Remove(_cacheTimeStampKey);
         }
 
         #region Helpers
@@ -103,13 +105,16 @@ namespace UQFramework.Cache
             try
             {
                 var cache = MemoryCache.Default;
+				var timeStamp = _cacheProvider.LastChanged;
+				var currentTimeStamp = cache[_cacheTimeStampKey] as DateTimeOffset?;
 
-                if (cache[_cacheKey] is IDictionary<string, T> result)
+                if (cache[_cacheKey] is IDictionary<string, T> result && currentTimeStamp == timeStamp)
                     return func(result);
 
                 var data = _cacheProvider.GetAllCachedItems();
-
-                SetCache(cache, data);
+				timeStamp = _cacheProvider.LastChanged;
+				
+				SetCache(cache, data, timeStamp);
 
                 return func(data);
             }
@@ -134,12 +139,14 @@ namespace UQFramework.Cache
             try
             {
                 var cache = MemoryCache.Default;
+				var timeStamp = _cacheProvider.LastChanged;
+				var currentTimeStamp = cache[_cacheTimeStampKey] as DateTimeOffset?;
 
-                if (!(cache[_cacheKey] is IDictionary<string, T> data))
+				if (!(cache[_cacheKey] is IDictionary<string, T> data && currentTimeStamp == timeStamp))
                 {
                     data = _cacheProvider.GetAllCachedItems();
-
-                    SetCache(cache, data);
+					timeStamp = _cacheProvider.LastChanged;
+					SetCache(cache, data, timeStamp);
                 }
 
                 // YSV: not happy doing ToList() here - but otherwise lock would not make sense, also it does not square well with iterators
@@ -159,9 +166,10 @@ namespace UQFramework.Cache
 
         #endregion
 
-        private void SetCache(MemoryCache cache, IDictionary<string, T> data)
+        private void SetCache(MemoryCache cache, IDictionary<string, T> data, DateTimeOffset cacheTimeStamp)
         {
             cache.Set(_cacheKey, data, ObjectCache.InfiniteAbsoluteExpiration);
+			cache.Set(_cacheTimeStampKey, cacheTimeStamp, ObjectCache.InfiniteAbsoluteExpiration);
         }
 
     }

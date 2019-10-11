@@ -9,6 +9,6 @@ namespace UQFramework.Cache
     interface IRefreshableData
     {
         void NotifyUpdated(IEnumerable<string> identifiers);
-        void NotifyFullRefreshRequired();
+        void NotifyCacheExpired();
     }
 }

@@ -23,12 +23,11 @@ namespace UQFramework.Cache.Providers
         private readonly Version _daoVersion;
         private readonly Type _dataAccessObjectType;
         private readonly IContractResolver _jsonContractResolver;
-        private readonly string _dataStoreSetId;
 
         private static readonly ReaderWriterLockSlim _cacheLock = new ReaderWriterLockSlim();
 
-        public TextFileCacheProvider(string dataStoreSetId, IDictionary<string,string> parameters, object dataSourceReader, IEnumerable<PropertyInfo> cachedProperties)
-            : base(dataSourceReader, cachedProperties)
+		public TextFileCacheProvider(string dataStoreSetId, IDictionary<string, string> parameters, object dataSourceReader, IEnumerable<PropertyInfo> cachedProperties)
+            : base(dataStoreSetId, dataSourceReader, cachedProperties)
         {
             if (string.IsNullOrEmpty(dataStoreSetId))
                 throw new ArgumentNullException(nameof(dataStoreSetId));
@@ -36,7 +35,6 @@ namespace UQFramework.Cache.Providers
             if (!parameters.TryGetValue("folder", out _folder))
                 throw new ArgumentException("Required key 'folder' missing in parameters", nameof(parameters));
 
-            _dataStoreSetId = dataStoreSetId;
             ProcessMacroses(ref _folder);
 
             _dataAccessObjectType = dataSourceReader.GetType();
@@ -49,7 +47,9 @@ namespace UQFramework.Cache.Providers
             _jsonContractResolver = new CachedPropertyContractResolver(_cachedProperties);
         }
 
-        protected override bool RebuildRequired()
+		public override DateTimeOffset LastChanged => File.GetLastWriteTimeUtc(_pathToFile);
+
+		protected override bool RebuildRequired()
         {
             _cacheLock.EnterReadLock();
             // YSV: think about storing header separately to avoid the concurency problem
@@ -184,8 +184,12 @@ namespace UQFramework.Cache.Providers
                 }
             }
 
-            foreach (var key in idArr) // add new
-                yield return SerializeItem(key, newEntities[key]);
+			foreach (var key in idArr)
+			{// add new
+				if (!newEntities.Keys.Contains(key)) // still not sure why
+					continue;
+				yield return SerializeItem(key, newEntities[key]);
+			}
         }
 
         #region Item JSon Serialization

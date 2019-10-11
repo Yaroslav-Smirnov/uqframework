@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace UQFramework.Cache
 {
@@ -27,5 +28,7 @@ namespace UQFramework.Cache
         /// Forcibly rebuilds the whole persistent cache;
         /// </summary>
         void FullRebuild();
+
+		DateTimeOffset LastChanged { get; }
     }
 }

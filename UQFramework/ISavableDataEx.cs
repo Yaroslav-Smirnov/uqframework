@@ -2,7 +2,9 @@
 {
     interface ISavableDataEx
     {
-        void SaveChanges();
+		void Delete();
+
+		void CreateAndUpdate();
 
         void UpdateCacheWithPendingChanges();
     }

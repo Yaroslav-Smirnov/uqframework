@@ -7,7 +7,7 @@ namespace UQFramework.Cache
     internal abstract class CachedDataProviderBase<TEntity> : ICachedDataProvider<TEntity>, ICachedDataProviderEx
     {
         //YSV: consider creating memorycache on the fly, review locking in memory cache service
-        private readonly IMemoryCacheService<TEntity> _memoryCacheService;
+        private readonly ICacheService<TEntity> _memoryCacheService;
         protected CachedDataProviderBase(IPersistentCacheProvider<TEntity> persistentCacheProvider)
         {
             if (persistentCacheProvider == null)
@@ -70,7 +70,7 @@ namespace UQFramework.Cache
         void ICachedDataProviderEx.UpdateCacheServiceAll()
         {
             if (_memoryCacheService is IRefreshableData refreshableData)
-                refreshableData.NotifyFullRefreshRequired();
+                refreshableData.NotifyCacheExpired();
         }
     }
 }
