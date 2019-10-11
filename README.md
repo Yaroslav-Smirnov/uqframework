@@ -4,6 +4,10 @@ UQFramework allows linq to any data store in a similiar way as Linq2SQL and Enti
 The library is based on .Net Standard 2.0 which means it can be used in .Net Framework and .Net Core projects.
 
 # Getting Started
+To use UQFramework just follow these simple steps:   
+1. Create Model(s). Entities which you serialize/deserialize your data into/from. 
+2. Crate DataAccessObject for the model. A component which reads/writes the entities
+3. Create a context. Contains collections of the entities and enables querying using LINQ and CRUD operations.
 
 ## Creating Model
 Any model with string identifier can be used in UQFramework. The identifier property must be marked with [Key] or [Identifier] attribute.
