@@ -125,12 +125,91 @@ namespace UQFramework
 
         IEnumerable<T> ISavableData<T>.PendingAdd => _addedItems;
 
+		IEnumerable<(Type type, string id, object entity)> ISavableDataEx.PendingAdd => _addedItems.Select(x => (typeof(T), _identifierGetter(x), (object)x)).ToList();
+
+		IEnumerable<(Type type, string id, object entity)> ISavableDataEx.PendingUpdate => _updatedItems.Values.Select(x => (typeof(T), _identifierGetter(x), (object)x)).ToList();
+
+		IEnumerable<(Type type, string id, object entity)> ISavableDataEx.PendingDelete => _deletedItems.Values.Select(x => (typeof(T), _identifierGetter(x), (object)x)).ToList();
+
 		private IQueryProvider GetQueryProvider()
         {
             //var queryContext = new QueryContext<T>(GetEntitiesConsideringPending, GetEntitiesIdentifiersConsideringPending, GetEntitiesConsideringPending);
             return new QueryProvider(this);
         }
 
+
+        #region Getting Entities By identifiers
+
+		/*
+        private IEnumerable<T> GetEntitiesConsideringPending(IEnumerable<string> identifiers, bool cacheUseAllowed)
+        {
+            // The method is called from QueryContext. 
+            // The contract is: if identifiers is null then all the collection is queried
+
+            var savable = (ISavableData<T>)this;
+
+            var pendingItems = savable.GetAllPendingChanges().ToList();
+            var identifiersToExclude = pendingItems.Select(_identifierGetter);
+
+            if (identifiers == null)
+            {
+                var entities = GetAllEntities(cacheUseAllowed)
+                                    .Where(x => !identifiersToExclude.Contains(_identifierGetter(x)));
+
+                return savable.CombineWithPendingChanges(entities, null);
+            }
+
+            var filter = identifiers.Except(identifiersToExclude);
+
+            if (!filter.Any())
+                return savable.CombineWithPendingChanges(Enumerable.Empty<T>(), x => identifiers.Contains(_identifierGetter(x)));
+
+            return savable.CombineWithPendingChanges(GetEntities(filter, cacheUseAllowed), x => identifiers.Contains(_identifierGetter(x)));
+        }*/
+		/*
+        private IEnumerable<T> GetEntities(IEnumerable<string> identifiers, bool cacheUseAllowed)
+        {
+            if (_cachedDataProvider != null && cacheUseAllowed)
+                return _cachedDataProvider.GetEntitiesBasedOnCache(identifiers);
+
+            return GetEntitiesFromDao(identifiers);
+        }
+
+        private IEnumerable<T> GetAllEntities(bool cacheUseAllowed)
+        {
+            if (_cachedDataProvider != null && cacheUseAllowed)
+                return _cachedDataProvider.GetEntitiesBasedOnCache();
+
+            return GetAllEntitiesFromDao();
+        }*/
+		/*
+        private IEnumerable<T> GetAllEntitiesFromDao()
+        {
+            if (_dataAccessObject is IDataSourceEnumeratorEx<T> dataSourceReaderAll)
+                return dataSourceReaderAll.GetAllEntities();
+
+            if (_dataAccessObject is IDataSourceEnumerator<T> dataSourceEnumerator)
+            {
+                var identifiers = dataSourceEnumerator.GetAllEntitiesIdentifiers();
+                return GetEntitiesFromDao(identifiers);
+            }
+
+            throw new InvalidOperationException($"DataAccessObject {_dataAccessObject.GetType()} for type {typeof(T).FullName} does not implement {nameof(IDataSourceEnumerator<T>)}");
+        }*/
+
+        //YSV: forceNonParallel - quick patch for FirstOrDefault(), need to proper refactor then
+        //private IEnumerable<T> GetEntitiesFromDao(IEnumerable<string> identifiers)
+        //{
+        //    if (_dataAccessObject is IDataSourceBulkReader<T> bulkReader)
+        //        return bulkReader.GetEntities(identifiers);
+
+        //    if (_dataAccessObject is IDataSourceReader<T> justReader)
+        //        return identifiers.AsParallel().Select(justReader.GetEntity).Where(x => x != null);
+
+        //    throw new InvalidOperationException($"DataAccessObject {_dataAccessObject.GetType()} for type {typeof(T).FullName} does not implement neither {nameof(IDataSourceBulkReader<T>)} nor {nameof(IDataSourceReader<T>)}");
+        //}
+
+        #endregion
 
 		void ISavableDataEx.Delete()
 		{

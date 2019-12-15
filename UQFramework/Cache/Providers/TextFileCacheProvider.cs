@@ -12,7 +12,7 @@ using UQFramework.Attributes;
 
 namespace UQFramework.Cache.Providers
 {
-    public class TextFileCacheProvider<T> : PersistentCacheProviderBase<T>
+	public class TextFileCacheProvider<T> : PersistentCacheProviderBase<T>
     {
         private readonly string _folder;
         private readonly string _pathToFile;
@@ -44,7 +44,7 @@ namespace UQFramework.Cache.Providers
 
             _daoVersion = _dataAccessObjectType.GetCustomAttribute<DaoVersionAttribute>()?.Version ?? new Version(1, 0, 0, 0);
 
-            _jsonContractResolver = new CachedPropertyContractResolver(_cachedProperties);
+            _jsonContractResolver = new CachedPropertyContractResolver<T>(_cachedProperties);
         }
 
 		public override DateTimeOffset LastChanged => File.GetLastWriteTimeUtc(_pathToFile);
@@ -145,6 +145,12 @@ namespace UQFramework.Cache.Providers
                     var newContent = GetNewFileLines(identifiers, newEntities).ToArray();
                     File.WriteAllLines(_pathToFile, newContent);
                 }
+                catch (Exception ex)
+                {
+                    var errFileName = Path.Combine(_folder, "TextFileCacheUpdateErrors.txt");
+                    File.WriteAllText(errFileName, $"{ex.Message}\n{ex.StackTrace}");
+                    throw;
+                }
                 finally
                 {
                     _cacheLock.ExitWriteLock();
@@ -218,28 +224,6 @@ namespace UQFramework.Cache.Providers
                 DefaultValueHandling = DefaultValueHandling.Ignore,
                 ContractResolver = _jsonContractResolver,
             };
-        }
-
-        private class CachedPropertyContractResolver : DefaultContractResolver
-        {
-            private readonly IEnumerable<PropertyInfo> _cachedProperties;
-            private IList<JsonProperty> _serializedProperties;
-            internal CachedPropertyContractResolver(IEnumerable<PropertyInfo> cachedProperties)
-            {
-                _cachedProperties = cachedProperties;
-            }
-            protected override IList<JsonProperty> CreateProperties(Type type, MemberSerialization memberSerialization)
-            {
-                if (type != typeof(T)) // just in case we have a hierarchy here
-                    return base.CreateProperties(type, memberSerialization);
-
-                if (_serializedProperties != null)
-                    return _serializedProperties;
-
-                var properties = base.CreateProperties(type, memberSerialization);
-
-                return _serializedProperties = properties.Where(jp => _cachedProperties.Any(p => p.Name == jp.PropertyName)).ToList();
-            }
         }
 
         #endregion

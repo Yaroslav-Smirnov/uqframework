@@ -16,6 +16,7 @@ namespace UQFrameWork.Demo
         }
 
         [DataAccessObject(typeof(DaoFile))]
+        //[DataAccessObject(typeof(DaoS3))]
         public IUQCollection<Entity> Entities { get; set; }
     }
 }

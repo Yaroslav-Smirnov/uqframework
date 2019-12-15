@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Data;
 using System.Reflection;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
 using Newtonsoft.Json;
 using UQFramework.Attributes;
@@ -19,7 +21,7 @@ namespace UQFramework.Cache.Providers
 		private readonly string _dataBaseName;
 
 		private readonly string _cacheKey;
-
+		private readonly CachedPropertyContractResolver<T> _jsonContractResolver; 
 		public SqlCacheProvider(string dataStoreSetId, IDictionary<string, string> parameters, object dataSourceReader, IEnumerable<PropertyInfo> cachedProperties)
 			: base(dataStoreSetId, dataSourceReader, cachedProperties)
 		{
@@ -35,6 +37,8 @@ namespace UQFramework.Cache.Providers
 			_dataBaseName = $"Database{_dataStoreSetId}";
 
 			_daoVersion = dataSourceReader.GetType().GetCustomAttribute<DaoVersionAttribute>()?.Version ?? new Version(1, 0, 0, 0);
+
+			_jsonContractResolver = new CachedPropertyContractResolver<T>(_cachedProperties);
 		}
 
 		public override DateTimeOffset LastChanged
@@ -46,15 +50,13 @@ namespace UQFramework.Cache.Providers
 				{
 					cn.Open();
 					// check database
-					cm.CommandText = BuildCreateDbIfNotExist();
-					cm.ExecuteNonQuery();
-					cn.ChangeDatabase(_dataBaseName);
+					EnsureDbExists(cn, cm);
 
 					cm.CommandText = BuildGetLastTableChangedTime();
 
 					var result = cm.ExecuteScalar();
 
-					if (result == null)
+					if (result == null || result is DBNull)
 						return DateTimeOffset.MinValue;
 
 					return Convert.ToDateTime(result);
@@ -72,14 +74,14 @@ namespace UQFramework.Cache.Providers
 
 				cm.CommandText = BuildSelectSQL();
 				var rdr = cm.ExecuteReader();
-				var result = new Dictionary<string, T>();
+				//var result = new Dictionary<string, T>();
 
-				while (rdr.Read())
-				{
-					var key = rdr["Id"].ToString().Trim(); // pk;					
-					result[key] = JsonConvert.DeserializeObject<T>(rdr["Data"].ToString(), GetSerializerSettings());
-				}
-				return result;
+				// quicly load everything in memory, then deserialize in parrallel;
+				var list = new List<(string key, string value)>();
+				while (rdr.Read())				
+					list.Add((rdr["Id"].ToString().Trim(), rdr["Data"].ToString()));
+				
+				return list.AsParallel().ToDictionary(kvp => kvp.key, kvp => JsonConvert.DeserializeObject<T>(kvp.value, GetSerializerSettings()));
 			}
 		}
 
@@ -91,13 +93,7 @@ namespace UQFramework.Cache.Providers
 				cn.Open();
 
 				// check database
-				cm.CommandText = BuildCreateDbIfNotExist();
-				cm.ExecuteNonQuery();
-				cn.ChangeDatabase(_dataBaseName);
-
-				// create Info table if required
-				cm.CommandText = BuildCreateInfoTableSql();
-				cm.ExecuteNonQuery();
+				EnsureDbExists(cn, cm);
 
 				cm.CommandText = BuildGetCacheInfoSQL();
 				using (var rdr = cm.ExecuteReader())
@@ -123,17 +119,7 @@ namespace UQFramework.Cache.Providers
 				cn.Open();
 
 				// check database
-				cm.CommandText = BuildCreateDbIfNotExist();
-				cm.ExecuteNonQuery();
-				cn.ChangeDatabase(_dataBaseName);
-
-				// create Info table if required
-				cm.CommandText = BuildCreateInfoTableSql();
-				cm.ExecuteNonQuery();
-
-				// re-create type for identifiers
-				cm.CommandText = BuildCreateIdentifiersTypeSql();
-				cm.ExecuteNonQuery();
+				EnsureDbExists(cn, cm);
 
 				// re-create table
 				cm.CommandText = BuildCreateTableSql();
@@ -146,7 +132,6 @@ namespace UQFramework.Cache.Providers
 				using (var tran = cn.BeginTransaction())
 				{
 					cm.Transaction = tran;
-
 
 					// insert data into _Info table
 					cm.CommandText = BuildUpdateCacheInfoSQL();
@@ -199,8 +184,52 @@ namespace UQFramework.Cache.Providers
 			{
 				NullValueHandling = NullValueHandling.Ignore,
 				DefaultValueHandling = DefaultValueHandling.Ignore,
-				//ContractResolver = _jsonContractResolver,
+				ContractResolver = _jsonContractResolver,
 			};
+		}
+
+		private void EnsureDbExists(SqlConnection cn, SqlCommand cm)
+		{
+			lock(Locker.Lock)
+			{
+				cm.CommandText = 
+$@"SELECT 
+	1 
+FROM 
+	master.dbo.sysdatabases
+WHERE 
+	[name] = '{_dataBaseName}'";
+
+				var result = cm.ExecuteScalar();
+
+				if (result != null)
+				{
+					cn.ChangeDatabase(_dataBaseName);
+					return;
+				}
+
+				cm.CommandText = $"CREATE DATABASE [{ _dataBaseName}]";
+				cm.ExecuteNonQuery();
+
+				cn.ChangeDatabase(_dataBaseName);
+
+				cm.CommandText =
+$@"CREATE TYPE [dbo].[{_identifiersTableType}] As Table
+	(
+		Id char(512) NOT NULL PRIMARY KEY CLUSTERED
+	)
+
+	CREATE TABLE [dbo].[{_infoTableName}](	
+		[CacheKey] [varchar](512) NOT NULL,
+		[TableName] [varchar](128) NOT NULL,
+		[Version] [varchar](32) NOT NULL,
+		[CachedProperties] [varchar](MAX) NOT NULL,
+	CONSTRAINT [PK_{_infoTableName}] PRIMARY KEY CLUSTERED 
+	(
+		[CacheKey] ASC
+	))";
+				cm.ExecuteNonQuery();
+			}
 		}
 
 		#region SQL Building
@@ -214,44 +243,6 @@ FROM   sys.dm_db_index_usage_stats us
          ON t.object_id = us.object_id
 WHERE  database_id = db_id()
        AND t.object_id = object_id('dbo.{_tableName}') ";
-		}
-
-		private string BuildCreateDbIfNotExist()
-		{
-			return
-$@"IF NOT EXISTS(
-	SELECT 
-		1 
-	FROM 
-		master.dbo.sysdatabases
-	WHERE 
-		[name] = '{_dataBaseName}')
-BEGIN
-	CREATE DATABASE [{_dataBaseName}]
-END";
-		}
-
-		private string BuildCreateInfoTableSql()
-		{
-			return
-$@"IF NOT EXISTS 
-	(SELECT 
-		1 
-	FROM 
-		INFORMATION_SCHEMA.TABLES
-	WHERE 
-		TABLE_NAME = '{_infoTableName}')
-BEGIN
-	CREATE TABLE [dbo].[{_infoTableName}](	
-		[CacheKey] [varchar](512) NOT NULL,
-		[TableName] [varchar](128) NOT NULL,
-		[Version] [varchar](32) NOT NULL,
-		[CachedProperties] [varchar](MAX) NOT NULL,
-	CONSTRAINT [PK_{_infoTableName}] PRIMARY KEY CLUSTERED 
-	(
-		[CacheKey] ASC
-	))
-END";
 		}
 
 		private string BuildUpdateCacheInfoSQL()
@@ -309,18 +300,6 @@ CONSTRAINT [PK_{_tableName}] PRIMARY KEY CLUSTERED
 (
 	[Id] ASC
 ))";
-		}
-
-		private string BuildCreateIdentifiersTypeSql()
-		{
-			return
-$@"IF TYPE_ID(N'{_identifiersTableType}') IS NULL
-BEGIN
-	CREATE TYPE [dbo].[{_identifiersTableType}] As Table
-	(
-		Id char(512) NOT NULL PRIMARY KEY CLUSTERED
-	)
-END";
 		}
 
 		private string BuildCreateTypeSql()

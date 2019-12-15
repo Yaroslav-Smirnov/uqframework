@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using System.Transactions;
 using UQFramework.Attributes;
 using UQFramework.Cache;
 using UQFramework.Configuration;
@@ -44,7 +45,7 @@ namespace UQFramework
 		private IEnumerable<ISavableDataEx> GetCollections()
 		{
 			return GetType().GetProperties()
-						.Where(p => p.PropertyType.GetGenericTypeDefinition() == typeof(IUQCollection<>))
+						.Where(p => p.PropertyType.IsGenericType && p.PropertyType.GetGenericTypeDefinition() == typeof(IUQCollection<>))
 						.Select(p => (ISavableDataEx)p.GetValue(this))
 						.Where(c => c != null) //; //pick only initialized collections
 						.OrderBy(x =>
@@ -57,7 +58,7 @@ namespace UQFramework
 		private void InitializeCollections()
 		{
 			var collectionsToInitialize = GetType().GetProperties()
-					.Where(p => p.PropertyType.GetGenericTypeDefinition() == typeof(IUQCollection<>))
+					.Where(p => p.PropertyType.IsGenericType && p.PropertyType.GetGenericTypeDefinition() == typeof(IUQCollection<>))
 					.Select(p => new
 					{
 						Property = p,
@@ -119,8 +120,26 @@ namespace UQFramework
 			}
 		}
 
+		protected IEnumerable<(Type type, string Id, object entity)> PendingAdd => GetCollections().SelectMany(c => c.PendingAdd).ToList();
+
+		protected IEnumerable<(Type type, string Id, object entity)> PendingUpdate => GetCollections().SelectMany(c => c.PendingUpdate).ToList();
+
+		protected IEnumerable<(Type type, string Id, object entity)> PendingDelete => GetCollections().SelectMany(c => c.PendingDelete).ToList();
+
+		protected virtual void OnBeforeSaveChanges()
+		{
+
+		}
+
+		protected virtual void OnBeforeTransactionCommit()
+		{
+
+		}
+
 		public void SaveChanges(string commitMessage = null)
 		{
+			OnBeforeSaveChanges();
+
 			if (_transactionService != null)
 				_transactionService.BeginTransaction();
 
@@ -128,23 +147,30 @@ namespace UQFramework
 			{
 				// get collections
 				var collections = GetCollections().ToList();
-				// 1. Save changes maintaining dependencies order
-				// 1.a  Delete entities 
-				foreach (var collection in collections.Reverse<ISavableDataEx>())
-					collection.Delete();
 
-				// 1.b  Create and update 
-				foreach (var collection in collections)
-					collection.CreateAndUpdate();
+				using (var scope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+				{
+					// 1. Save changes maintaining dependencies order
+					// 1.a  Delete entities 
+					foreach (var collection in collections.Reverse<ISavableDataEx>())
+						collection.Delete();
 
-				// 2. Update Cache
-				Parallel.ForEach(collections, c => c.UpdateCacheWithPendingChanges());
-				//foreach (var collection in collections)
-				//    collection.UpdateCacheWithPendingChanges();
+					// 1.b  Create and update 
+					foreach (var collection in collections)
+						collection.CreateAndUpdate();
 
-				// 3. Commit changes
-				if (_transactionService != null)
-					_transactionService.CommitChanges(commitMessage);
+					// 2. Commit changes
+					if (_transactionService != null)
+					{
+						OnBeforeTransactionCommit();
+						_transactionService.CommitChanges(commitMessage);
+					}
+
+					// 3. Update Cache
+					Parallel.ForEach(collections, c => c.UpdateCacheWithPendingChanges());
+
+					scope.Complete();
+				}
 			}
 			catch
 			{

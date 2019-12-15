@@ -93,8 +93,7 @@ namespace UQFramework.Cache
         public void NotifyCacheExpired()
         {
             var cache = MemoryCache.Default;
-            cache.Remove(_cacheKey);
-            cache.Remove(_cacheTimeStampKey);
+            cache.Remove(_cacheKey);            
         }
 
         #region Helpers
