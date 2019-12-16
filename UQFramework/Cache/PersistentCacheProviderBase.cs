@@ -12,6 +12,7 @@ namespace UQFramework.Cache
         private readonly IDataSourceReader<T> _dataSourceReader;
         private readonly IDataSourceBulkReader<T> _dataSourceBulkReader;
         private readonly IDataSourceEnumerator<T> _dataSourceEnumerator;
+		private readonly IDataSourceCacheProvider<T> _dataSourceWithCache;
         private readonly Func<T, string> _keyGetter;
         protected readonly IEnumerable<PropertyInfo> _cachedProperties;
 		protected readonly string _dataStoreSetId;
@@ -33,8 +34,10 @@ namespace UQFramework.Cache
 
             _dataSourceReader = dataSourceReader as IDataSourceReader<T>;
             _dataSourceBulkReader = dataSourceReader as IDataSourceBulkReader<T>;
+			_dataSourceWithCache = dataSourceReader as IDataSourceCacheProvider<T>;
 
-            if (_dataSourceBulkReader == null && _dataSourceReader == null)
+
+			if (_dataSourceBulkReader == null && _dataSourceReader == null)
                 throw new InvalidOperationException($"Data Access Object for type {typeof(T)} must implement {nameof(IDataSourceReader<T>)} or {nameof(IDataSourceBulkReader<T>)}");
         }
 
@@ -59,7 +62,9 @@ namespace UQFramework.Cache
 		public void FullRebuild()
         {
             var dict = default(IDictionary<string, T>);
-            if (_dataSourceEnumerator is IDataSourceEnumeratorEx<T> dataSourceEnumeratorEx)
+			if (_dataSourceWithCache != null)
+				dict = _dataSourceWithCache.GetEntitiesWithCachedPropertiesOnly().ToDictionary(_keyGetter, item => item);
+            else if (_dataSourceEnumerator is IDataSourceEnumeratorEx<T> dataSourceEnumeratorEx)
                 dict = dataSourceEnumeratorEx.GetAllEntities().ToDictionary(_keyGetter, item => item);
             else
                 dict = GetEntitiesFromDao(_dataSourceEnumerator.GetAllEntitiesIdentifiers())
@@ -91,6 +96,9 @@ namespace UQFramework.Cache
 
         private IEnumerable<T> GetEntitiesFromDao(IEnumerable<string> identifiers)
         {
+			if (_dataSourceWithCache != null)
+				return _dataSourceWithCache.GetEntitiesWithCachedPropertiesOnly(identifiers).AsEnumerable();
+
             if (_dataSourceBulkReader != null)
                 return _dataSourceBulkReader.GetEntities(identifiers);
 
