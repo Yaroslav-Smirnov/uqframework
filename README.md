@@ -181,7 +181,7 @@ Alternatively, you can implement your own cache storage by inheriting from Persi
 </configuration>
 ```
 
-**Example configuration to store cache in sql files**
+**Example configuration to store cache in relational db**
 ```XML
 <?xml version="1.0" encoding="utf-8" ?>
 <configuration>
