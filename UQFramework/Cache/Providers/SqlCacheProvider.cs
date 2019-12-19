@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Data;
 using System.Reflection;
 using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.Data.SqlClient;
+using System.Data.SqlClient;
 using Newtonsoft.Json;
 using UQFramework.Attributes;
+using System.Data.Common;
 
 namespace UQFramework.Cache.Providers
 {
@@ -21,7 +21,7 @@ namespace UQFramework.Cache.Providers
 		private readonly string _dataBaseName;
 
 		private readonly string _cacheKey;
-		private readonly CachedPropertyContractResolver<T> _jsonContractResolver; 
+		private readonly CachedPropertyContractResolver<T> _jsonContractResolver;
 		public SqlCacheProvider(string dataStoreSetId, IDictionary<string, string> parameters, object dataSourceReader, IEnumerable<PropertyInfo> cachedProperties)
 			: base(dataStoreSetId, dataSourceReader, cachedProperties)
 		{
@@ -31,7 +31,7 @@ namespace UQFramework.Cache.Providers
 			if (!parameters.TryGetValue("connectionstring", out _connectionString))
 				throw new ArgumentException("Required key 'connectionstring' missing in parameters", nameof(parameters));
 
-			_cacheKey = $"{typeof(T).Name}_{dataSourceReader.GetType().Name.Replace("`","")}";
+			_cacheKey = $"{typeof(T).Name}_{dataSourceReader.GetType().Name.Replace("`", "")}";
 			_tableName = $"Table_{_cacheKey}";
 
 			_dataBaseName = $"Database{_dataStoreSetId}";
@@ -45,138 +45,194 @@ namespace UQFramework.Cache.Providers
 		{
 			get
 			{
-				using (var cn = new SqlConnection(_connectionString))
-				using (var cm = cn.CreateCommand())
+				return ExecuteSqlDelegate(cn =>
 				{
-					cn.Open();
-					// check database
-					EnsureDbExists(cn, cm);
+					using (var cm = cn.CreateCommand())
+					{
+						cm.Transaction = CacheGlobals.Transaction as SqlTransaction;
+						// check database
+						EnsureDbExists(cn, cm);
 
-					cm.CommandText = BuildGetLastTableChangedTime();
+						cm.CommandText = BuildGetLastTableChangedTime();
 
-					var result = cm.ExecuteScalar();
+						var result = cm.ExecuteScalar();
 
-					if (result == null || result is DBNull)
-						return DateTimeOffset.MinValue;
+						if (result == null || result is DBNull)
+							return DateTimeOffset.MinValue;
 
-					return Convert.ToDateTime(result);
-				}
+						return Convert.ToDateTime(result);
+					}
+				});
 			}
 		}
 
 		protected override IDictionary<string, T> ReadAllDataFromCache()
 		{
-			using (var cn = new SqlConnection(_connectionString))
-			using (var cm = cn.CreateCommand())
+			return ExecuteSqlDelegate(cn =>
 			{
-				cn.Open();
-				cn.ChangeDatabase(_dataBaseName);
+				using (var cm = cn.CreateCommand())
+				{
+					cm.Transaction = CacheGlobals.Transaction as SqlTransaction;
+					cn.ChangeDatabase(_dataBaseName);
 
-				cm.CommandText = BuildSelectSQL();
-				var rdr = cm.ExecuteReader();
-				//var result = new Dictionary<string, T>();
+					cm.CommandText = BuildSelectSQL();
+					var rdr = cm.ExecuteReader();
+					//var result = new Dictionary<string, T>();
 
-				// quicly load everything in memory, then deserialize in parrallel;
-				var list = new List<(string key, string value)>();
-				while (rdr.Read())				
-					list.Add((rdr["Id"].ToString().Trim(), rdr["Data"].ToString()));
-				
-				return list.AsParallel().ToDictionary(kvp => kvp.key, kvp => JsonConvert.DeserializeObject<T>(kvp.value, GetSerializerSettings()));
-			}
+					// quicly load everything in memory, then deserialize in parrallel;
+					var list = new List<(string key, string value)>();
+					while (rdr.Read())
+						list.Add((rdr["Id"].ToString().Trim(), rdr["Data"].ToString()));
+
+					return list.AsParallel().ToDictionary(kvp => kvp.key, kvp => JsonConvert.DeserializeObject<T>(kvp.value, GetSerializerSettings()));
+				}
+			});
 		}
 
 		protected override bool RebuildRequired()
 		{
-			using (var cn = new SqlConnection(_connectionString))
-			using (var cm = cn.CreateCommand())
+			return ExecuteSqlDelegate(cn =>
 			{
-				cn.Open();
-
-				// check database
-				EnsureDbExists(cn, cm);
-
-				cm.CommandText = BuildGetCacheInfoSQL();
-				using (var rdr = cm.ExecuteReader())
+				using (var cm = cn.CreateCommand())
 				{
-					if (!rdr.HasRows)
-						return true;
+					cm.Transaction = CacheGlobals.Transaction as SqlTransaction;
+					// check database
+					EnsureDbExists(cn, cm);
 
-					rdr.Read();
+					cm.CommandText = BuildGetCacheInfoSQL();
+					using (var rdr = cm.ExecuteReader())
+					{
+						if (!rdr.HasRows)
+							return true;
 
-					var version = Version.Parse((string)rdr["Version"]);
-					var cachedProperties = (string)rdr["CachedProperties"];
+						rdr.Read();
 
-					return version != _daoVersion || cachedProperties != CachedPropertiesString;
+						var version = Version.Parse((string)rdr["Version"]);
+						var cachedProperties = (string)rdr["CachedProperties"];
+
+						return version != _daoVersion || cachedProperties != CachedPropertiesString;
+					}
 				}
-			}
+			});
 		}
 
 		protected override void ReplaceAll(IDictionary<string, T> newEntities)
 		{
-			using (var cn = new SqlConnection(_connectionString))
-			using (var cm = cn.CreateCommand())
+			ExecuteSqlDelegate(cn =>
 			{
-				cn.Open();
-
-				// check database
-				EnsureDbExists(cn, cm);
-
-				// re-create table
-				cm.CommandText = BuildCreateTableSql();
-				cm.ExecuteNonQuery();
-
-				// re-create table type 
-				cm.CommandText = BuildCreateTypeSql();
-				cm.ExecuteNonQuery();
-
-				using (var tran = cn.BeginTransaction())
+				using (var cm = cn.CreateCommand())
 				{
-					cm.Transaction = tran;
+					cm.Transaction = CacheGlobals.Transaction as SqlTransaction;
+					// check database
+					EnsureDbExists(cn, cm);
 
-					// insert data into _Info table
-					cm.CommandText = BuildUpdateCacheInfoSQL();
+					// re-create table
+					cm.CommandText = BuildCreateTableSql();
 					cm.ExecuteNonQuery();
 
-					cm.CommandText = BuildInsertSql();
-					var parameter = cm.Parameters.AddWithValue("@Entities", BuildEntitiesTableParameter(newEntities));
-					parameter.SqlDbType = SqlDbType.Structured;
-					parameter.TypeName = _dataTableType;
+					// re-create table type 
+					cm.CommandText = BuildCreateTypeSql();
 					cm.ExecuteNonQuery();
 
-					tran.Commit();
+					using (var tran = cn.BeginTransaction())
+					{
+						cm.Transaction = tran;
+
+						// insert data into _Info table
+						cm.CommandText = BuildUpdateCacheInfoSQL();
+						cm.ExecuteNonQuery();
+
+						cm.CommandText = BuildInsertSql();
+						var parameter = cm.Parameters.AddWithValue("@Entities", BuildEntitiesTableParameter(newEntities));
+						parameter.SqlDbType = SqlDbType.Structured;
+						parameter.TypeName = _dataTableType;
+						cm.ExecuteNonQuery();
+
+						tran.Commit();
+					}
 				}
-			}
+			});
 		}
 
 		protected override void ReplaceItems(IEnumerable<string> identifiers, IDictionary<string, T> newEntities)
 		{
-			using (var cn = new SqlConnection(_connectionString))
-			using (var cm = cn.CreateCommand())
+			void UpdateDb(SqlCommand cm)
 			{
-				cn.Open();
+				// delete stuff
+				cm.CommandText = BuildDeleteSql();
+				var parameter = cm.Parameters.AddWithValue("@Identifiers", BuildIdentifiersTable(identifiers));
+				parameter.SqlDbType = SqlDbType.Structured;
+				parameter.TypeName = _identifiersTableType;
+				cm.ExecuteNonQuery();
+
+				// insert new
+				cm.CommandText = BuildInsertSql();
+				parameter = cm.Parameters.AddWithValue("@Entities", BuildEntitiesTableParameter(newEntities));
+				parameter.SqlDbType = SqlDbType.Structured;
+				parameter.TypeName = _dataTableType;
+				cm.ExecuteNonQuery();
+			}
+
+			ExecuteSqlDelegate(cn =>
+			{
 				cn.ChangeDatabase(_dataBaseName);
 
-				using (var tran = cn.BeginTransaction())
+				using (var cm = cn.CreateCommand())
 				{
-					cm.Transaction = tran;
-					// delete stuff
-					cm.CommandText = BuildDeleteSql();
-					var parameter = cm.Parameters.AddWithValue("@Identifiers", BuildIdentifiersTable(identifiers));
-					parameter.SqlDbType = SqlDbType.Structured;
-					parameter.TypeName = _identifiersTableType;
-					cm.ExecuteNonQuery();
-
-					// insert new
-					cm.CommandText = BuildInsertSql();
-					parameter = cm.Parameters.AddWithValue("@Entities", BuildEntitiesTableParameter(newEntities));
-					parameter.SqlDbType = SqlDbType.Structured;
-					parameter.TypeName = _dataTableType;
-					cm.ExecuteNonQuery();
-
-					tran.Commit();
+					if (CacheGlobals.Transaction is SqlTransaction currentTransaction)
+					{
+						cm.Transaction = currentTransaction;
+						UpdateDb(cm);
+					}
+					else
+					{
+						using (var tran = cn.BeginTransaction())
+						{
+							cm.Transaction = tran;
+							UpdateDb(cm);
+							tran.Commit();
+						}
+					}
 				}
+			});
+		}
+
+		private void ExecuteSqlDelegate(Action<SqlConnection> sqlAction)
+		{
+			if (CacheGlobals.Transaction?.Connection is SqlConnection sqlConnetion)
+			{
+				if (sqlConnetion.State == ConnectionState.Closed)
+					sqlConnetion.Open();
+
+				sqlAction(sqlConnetion);
+				return;
+			}
+
+			using (var cn = new SqlConnection(_connectionString))
+			{
+				cn.Open();
+				sqlAction(cn);
 			}
 		}
+
+		private U ExecuteSqlDelegate<U>(Func<SqlConnection, U> sqlFunc)
+		{
+			if (CacheGlobals.Transaction?.Connection is SqlConnection sqlConnetion)
+			{
+				if (sqlConnetion.State == ConnectionState.Closed)
+					sqlConnetion.Open();
+
+				return sqlFunc(sqlConnetion);
+			}
+
+			using (var cn = new SqlConnection(_connectionString))
+			{
+				cn.Open();
+				return sqlFunc(cn);
+			}
+				
+		}
+
 
 		private JsonSerializerSettings GetSerializerSettings()
 		{
@@ -188,11 +244,11 @@ namespace UQFramework.Cache.Providers
 			};
 		}
 
-		private void EnsureDbExists(SqlConnection cn, SqlCommand cm)
+		private void EnsureDbExists(DbConnection cn, DbCommand cm)
 		{
-			lock(Locker.Lock)
+			lock (Locker.Lock)
 			{
-				cm.CommandText = 
+				cm.CommandText =
 $@"SELECT 
 	1 
 FROM 
@@ -359,7 +415,7 @@ SELECT * FROM @Entities";
 
 		private string BuildDeleteSql()
 		{
-			return 
+			return
 				$@"DELETE FROM {_tableName} WHERE Id IN 
 				(SELECT Id FROM @Identifiers)";
 		}

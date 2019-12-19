@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Transactions;
 using UQFramework.Attributes;
 using UQFramework.Cache;
+using UQFramework.Cache.Providers;
 using UQFramework.Configuration;
 using UQFramework.DAO;
 
@@ -101,7 +102,7 @@ namespace UQFramework
 		private void BuildRelationsOrder(IDictionary<Type, IList<Type>> dict)
 		{
 			// not expecting big collections here
-			_savingOrder = new List<Type>();			
+			_savingOrder = new List<Type>();
 			// find an item which does not have
 			while (dict.Any()) // self-referencing types here
 			{
@@ -148,28 +149,34 @@ namespace UQFramework
 				// get collections
 				var collections = GetCollections().ToList();
 
-				using (var scope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+				// 1. Save changes maintaining dependencies order
+				// 1.a  Delete entities 
+				foreach (var collection in collections.Reverse<ISavableDataEx>())
+					collection.Delete();
+
+				// 1.b  Create and update 
+				foreach (var collection in collections)
+					collection.CreateAndUpdate();
+
+				// 2. Update Cache
+				// if we within a DbTransaction assign it to static variable
+				if (_transactionService is ITransactionServiceDb transactionServiceDb)
 				{
-					// 1. Save changes maintaining dependencies order
-					// 1.a  Delete entities 
-					foreach (var collection in collections.Reverse<ISavableDataEx>())
-						collection.Delete();
-
-					// 1.b  Create and update 
-					foreach (var collection in collections)
-						collection.CreateAndUpdate();
-
-					// 2. Commit changes
-					if (_transactionService != null)
-					{
-						OnBeforeTransactionCommit();
-						_transactionService.CommitChanges(commitMessage);
-					}
-
-					// 3. Update Cache
+					CacheGlobals.Transaction = transactionServiceDb.GetTransaction();
+					// Asume a db transacion here and do not use multithreading for ADO.Net is not thread-safe
+					foreach (var c in collections)
+						c.UpdateCacheWithPendingChanges();
+				}
+				else
+				{
 					Parallel.ForEach(collections, c => c.UpdateCacheWithPendingChanges());
+				}
 
-					scope.Complete();
+				// 3. Commit changes
+				if (_transactionService != null)
+				{
+					OnBeforeTransactionCommit();
+					_transactionService.CommitChanges(commitMessage);
 				}
 			}
 			catch
