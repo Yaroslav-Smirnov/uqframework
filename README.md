@@ -1,3 +1,4 @@
+![](https://github.com/Yaroslav-Smirnov/uqframework/workflows/Build/badge.svg)
 # UQframework
 UQFramework allows linq to any data store in a similiar way as Linq2SQL and Entity Framework.
 
