@@ -14,4 +14,4 @@ jobs:
       with:
         dotnet-version: 2.2.108
     - name: Build with dotnet
-      run: dotnet build UQFramework\UQFramework.csprj --configuration Release
+      run: dotnet build UQFramework\UQFramework.csproj --configuration Release
