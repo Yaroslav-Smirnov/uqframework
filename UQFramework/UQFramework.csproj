@@ -8,7 +8,7 @@
     <Company />
     <AssemblyVersion>4.23.0.0</AssemblyVersion>
     <FileVersion>4.23.0.0</FileVersion>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageTags>linq, linq-to-entities</PackageTags>
     <RepositoryUrl>https://github.com/Yaroslav-Smirnov/uqframework</RepositoryUrl>
     <PackageLicenseFile>mit_license.txt</PackageLicenseFile>
