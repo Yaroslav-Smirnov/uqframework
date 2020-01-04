@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using UQFramework.Attributes;
 
@@ -19,7 +20,7 @@ namespace UQFramework.Helpers
 			return GetStringPropertyGetter<T>(keyProperty);
         }
 
-		public static Func<T,string> GetStringPropertyGetter<T>(PropertyInfo propertyInfo)
+		private static Func<T,string> GetStringPropertyGetter<T>(PropertyInfo propertyInfo)
 		{
 			if (propertyInfo == null)
 				throw new ArgumentNullException(nameof(propertyInfo));
@@ -47,6 +48,27 @@ namespace UQFramework.Helpers
 
             // if no identifier attribute then should be exactly one key attribute
             return GetPropertiesHavingAttribute(type, typeof(KeyAttribute)).SingleOrDefault();
+        }
+      
+        readonly static MethodInfo _containsMethodInfo = GetContainsMethodInfo();
+        static MethodInfo GetContainsMethodInfo()
+        {
+            var method = typeof(Enumerable).GetMethods().Where(x => x.Name == "Contains" && x.GetParameters().Length == 2)
+                .FirstOrDefault();
+
+            return method?.MakeGenericMethod(typeof(string));
+        }
+        public static Expression<Func<T, bool>> BuildNotContainsExpression<T>(PropertyInfo p, IEnumerable<string> targetList)
+        {
+            var parameter = Expression.Parameter(typeof(T), "x");
+            var property = Expression.Property(parameter, p);
+
+            var method = _containsMethodInfo;
+            var someValue = Expression.Constant(targetList, typeof(IEnumerable<string>));
+            var containsMethodExp = Expression.Call(null, method, someValue, property);
+            var notContainsExp = Expression.Not(containsMethodExp);
+
+            return Expression.Lambda<Func<T, bool>>(notContainsExp, parameter);
         }
     }
 }

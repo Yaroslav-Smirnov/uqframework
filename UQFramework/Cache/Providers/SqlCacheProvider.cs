@@ -84,7 +84,13 @@ namespace UQFramework.Cache.Providers
 					while (rdr.Read())
 						list.Add((rdr["Id"].ToString().Trim(), rdr["Data"].ToString()));
 
-					return list.AsParallel().ToDictionary(kvp => kvp.key, kvp => JsonConvert.DeserializeObject<T>(kvp.value, GetSerializerSettings()));
+                    var sw = new System.Diagnostics.Stopwatch();
+                    sw.Start();
+					var data = list.AsParallel().ToDictionary(kvp => kvp.key, kvp => JsonConvert.DeserializeObject<T>(kvp.value, GetSerializerSettings()));
+                    sw.Stop();
+                    System.Diagnostics.Debug.WriteLine($"{typeof(T)}: {sw.ElapsedMilliseconds}");
+
+                    return data;
 				}
 			});
 		}
@@ -406,9 +412,15 @@ SELECT * FROM @Entities";
 			table.Columns.Add("Id", typeof(string));
 			table.Columns.Add("Data", typeof(string));
 
+            var sw = new System.Diagnostics.Stopwatch();
+            sw.Start();
 			// inserting rows
 			foreach (var item in newEntities)
 				table.Rows.Add(item.Key, JsonConvert.SerializeObject(item.Value, Formatting.None, GetSerializerSettings()));
+
+            sw.Stop();
+
+            System.Diagnostics.Debug.WriteLine($"TVP for {typeof(T)} built in {sw.ElapsedMilliseconds} ({table.Rows.Count} rows)");
 
 			return table;
 		}

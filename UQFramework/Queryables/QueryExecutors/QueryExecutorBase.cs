@@ -9,7 +9,7 @@ using UQFramework.Queryables.ExpressionHelpers;
 
 namespace UQFramework.Queryables.QueryExecutors
 {
-    internal abstract class QueryExecutorBase<T>
+    internal abstract class QueryExecutorBase<T> : IQueryExecutor
     {
         protected readonly ExpressionInfo<T> _expressionInfo;
         protected readonly Func<T, bool> _predicate;
@@ -19,7 +19,7 @@ namespace UQFramework.Queryables.QueryExecutors
             _predicate = _expressionInfo?.Filter?.Compile();
         }
 
-        internal object Execute(Expression expression, bool isEnumerable)
+        public object Execute(Expression expression, bool isEnumerable)
         {
             // get identifiers
             var identifiers = GetIdentifiersToRequest();
