@@ -123,7 +123,7 @@ namespace UQFramework.Queryables.ExpressionAnalysis
             if (m.Method.Name != "Contains")
                 return false;
 
-            if (m.Method == typeof(string).GetMethod("Contains"))
+            if (m.Method.DeclaringType == typeof(string))
                 return false;
 
             if (m.Method.DeclaringType == typeof(List<string>))
