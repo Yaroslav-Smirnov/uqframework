@@ -134,10 +134,8 @@ namespace UQFramework.Cache.Providers
 					cm.CommandText = BuildCreateTypeSql();
 					cm.ExecuteNonQuery();
 
-					using (var tran = cn.BeginTransaction())
+					void UpdateCache()
 					{
-						cm.Transaction = tran;
-
 						// insert data into _Info table
 						cm.CommandText = BuildUpdateCacheInfoSQL();
 						cm.ExecuteNonQuery();
@@ -147,8 +145,21 @@ namespace UQFramework.Cache.Providers
 						parameter.SqlDbType = SqlDbType.Structured;
 						parameter.TypeName = _dataTableType;
 						cm.ExecuteNonQuery();
+					}
 
-						tran.Commit();
+					if (CacheGlobals.Transaction is SqlTransaction currentTransaction)
+					{
+						cm.Transaction = currentTransaction;
+						UpdateCache();
+					}
+					else
+					{
+						using (var tran = cn.BeginTransaction())
+						{
+							cm.Transaction = tran;
+							UpdateCache();
+							tran.Commit();
+						}
 					}
 				}
 			});
