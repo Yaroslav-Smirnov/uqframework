@@ -2,12 +2,12 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <Version>0.3.23</Version>
+    <Version>0.3.24</Version>
     <Authors>Yaroslav Smirnov</Authors>
     <Description>Adds Linq support to any Data Access Objects supporting CRUD operations based on indentifiers.</Description>
     <Company />
-    <AssemblyVersion>4.23.0.0</AssemblyVersion>
-    <FileVersion>4.23.0.0</FileVersion>
+    <AssemblyVersion>4.24.0.0</AssemblyVersion>
+    <FileVersion>4.24.0.0</FileVersion>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageTags>linq, linq-to-entities</PackageTags>
     <RepositoryUrl>https://github.com/Yaroslav-Smirnov/uqframework</RepositoryUrl>
