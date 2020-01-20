@@ -79,7 +79,14 @@ namespace UQFramework
 				if (dao is INeedDataSourceProperties dataSourcePropertiesRequestor)
 					dataSourcePropertiesRequestor.SetProperties(_properties);
 
-				var persistentCache = item.Attribute.DisableCache ? null : CacheInitializer.GetCachedDataProvider(entityType, _dataStoreSetId, UQConfiguration.Instance.HorizontalCacheConfiguration as IHorizontalCacheConfigurationInternal, dao);
+				var cacheConfig = ((CacheConfigurationAttribute)Attribute.GetCustomAttribute(GetType(), typeof(CacheConfigurationAttribute)))
+					?.Configuration;
+
+				var cacheConfigEx = cacheConfig != null 
+					? new InCodeCacheConfiguration(cacheConfig)
+					: UQConfiguration.Instance.HorizontalCacheConfiguration as IHorizontalCacheConfigurationInternal;
+
+				var persistentCache = item.Attribute.DisableCache ? null : CacheInitializer.GetCachedDataProvider(entityType, _dataStoreSetId, cacheConfigEx, dao);
 
 				(newCollection as IUQCollectionInitializer).Initialize(dao, persistentCache);
 				item.Property.SetValue(this, newCollection);
@@ -185,6 +192,10 @@ namespace UQFramework
 					_transactionService.Rollback();
 
 				throw;
+			}
+			finally
+			{
+				CacheGlobals.Transaction = null;
 			}
 		}
 
