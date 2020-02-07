@@ -49,7 +49,7 @@ namespace UQFramework.Cache
 
         protected abstract IDictionary<string, T> ReadAllDataFromCache();
 
-		public abstract DateTimeOffset LastChanged { get; }
+		public abstract long LastChanged { get; }
 
 		protected string CachedPropertiesString => string.Join(":", _cachedProperties
             .OrderBy(p => p.Name)
