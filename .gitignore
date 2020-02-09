@@ -11,3 +11,6 @@ UQFrameWork.Demo/obj/
 UQFrameWork.Demo/bin/Release/UQFrameWork.Demo.exe.config
 UQFrameWork.Demo/bin/Release/Newtonsoft.Json.xml
 *.nupkg
+/UQFrameWork.Demo/bin/Release
+/UQFramework.Tests/bin/Release/netcoreapp2.2
+/UQFramework.Tests/obj/Release/netcoreapp2.2
