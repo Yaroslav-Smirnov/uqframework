@@ -41,7 +41,7 @@ namespace UQFramework.Cache.Providers
 			_jsonContractResolver = new CachedPropertyContractResolver<T>(_cachedProperties);
 		}
 
-		public override DateTimeOffset LastChanged
+		public override long LastChanged
 		{
 			get
 			{
@@ -58,9 +58,9 @@ namespace UQFramework.Cache.Providers
 						var result = cm.ExecuteScalar();
 
 						if (result == null || result is DBNull)
-							return DateTimeOffset.MinValue;
+							return 0;
 
-						return Convert.ToDateTime(result);
+						return Convert.ToInt64(result);
 					}
 				});
 			}
@@ -134,21 +134,32 @@ namespace UQFramework.Cache.Providers
 					cm.CommandText = BuildCreateTypeSql();
 					cm.ExecuteNonQuery();
 
-					using (var tran = cn.BeginTransaction())
+					void UpdateCache()
 					{
-						cm.Transaction = tran;
-
 						// insert data into _Info table
 						cm.CommandText = BuildUpdateCacheInfoSQL();
-						cm.ExecuteNonQuery();
+						var updateNumber = (int)cm.ExecuteScalar();
 
 						cm.CommandText = BuildInsertSql();
-						var parameter = cm.Parameters.AddWithValue("@Entities", BuildEntitiesTableParameter(newEntities));
+						var parameter = cm.Parameters.AddWithValue("@Entities", BuildEntitiesTableParameter(newEntities, updateNumber));
 						parameter.SqlDbType = SqlDbType.Structured;
 						parameter.TypeName = _dataTableType;
 						cm.ExecuteNonQuery();
+					}
 
-						tran.Commit();
+					if (CacheGlobals.Transaction is SqlTransaction currentTransaction)
+					{
+						cm.Transaction = currentTransaction;
+						UpdateCache();
+					}
+					else
+					{
+						using (var tran = cn.BeginTransaction())
+						{
+							cm.Transaction = tran;
+							UpdateCache();
+							tran.Commit();
+						}
 					}
 				}
 			});
@@ -165,9 +176,13 @@ namespace UQFramework.Cache.Providers
 				parameter.TypeName = _identifiersTableType;
 				cm.ExecuteNonQuery();
 
+				// get latest transaction
+				cm.CommandText = BuildIncreaseUpdateNumberSQL();
+				var updateNumber = (int)cm.ExecuteScalar();
+
 				// insert new
 				cm.CommandText = BuildInsertSql();
-				parameter = cm.Parameters.AddWithValue("@Entities", BuildEntitiesTableParameter(newEntities));
+				parameter = cm.Parameters.AddWithValue("@Entities", BuildEntitiesTableParameter(newEntities, updateNumber));
 				parameter.SqlDbType = SqlDbType.Structured;
 				parameter.TypeName = _dataTableType;
 				cm.ExecuteNonQuery();
@@ -280,6 +295,7 @@ $@"CREATE TYPE [dbo].[{_identifiersTableType}] As Table
 		[TableName] [varchar](128) NOT NULL,
 		[Version] [varchar](32) NOT NULL,
 		[CachedProperties] [varchar](MAX) NOT NULL,
+		[LastUpdateNumber] int NOT NULL
 	CONSTRAINT [PK_{_infoTableName}] PRIMARY KEY CLUSTERED 
 	(
 		[CacheKey] ASC
@@ -293,12 +309,35 @@ $@"CREATE TYPE [dbo].[{_identifiersTableType}] As Table
 		private string BuildGetLastTableChangedTime()
 		{
 			return
-$@"SELECT last_user_update
+$@"SELECT
+	i.LastUpdateNumber
+FROM
+	dbo._Info i
+WHERE
+	i.CacheKey = '{_cacheKey}'";
+/*$@"SELECT last_user_update
 FROM   sys.dm_db_index_usage_stats us
        JOIN sys.tables t
          ON t.object_id = us.object_id
 WHERE  database_id = db_id()
        AND t.object_id = object_id('dbo.{_tableName}') ";
+	   */
+		}
+
+		private string BuildIncreaseUpdateNumberSQL()
+		{
+			return
+$@"UPDATE 
+	{_infoTableName}
+SET
+	[TableName] = '{_tableName}',
+	[Version] = '{_daoVersion.ToString()}',
+	[CachedProperties] = '{CachedPropertiesString}',
+	[LastUpdateNumber] = [LastUpdateNumber] + 1
+OUTPUT
+	inserted.LastUpdateNumber
+WHERE
+	[CacheKey] = '{_cacheKey}'";
 		}
 
 		private string BuildUpdateCacheInfoSQL()
@@ -311,14 +350,21 @@ BEGIN
 	SET
 		[TableName] = '{_tableName}',
 		[Version] = '{_daoVersion.ToString()}',
-		[CachedProperties] = '{CachedPropertiesString}'
+		[CachedProperties] = '{CachedPropertiesString}',
+		[LastUpdateNumber] = [LastUpdateNumber] + 1
+	OUTPUT
+		inserted.LastUpdateNumber
 	WHERE
 		[CacheKey] = '{_cacheKey}'
+
 END
 ELSE
 BEGIN
-	INSERT INTO {_infoTableName} ([CacheKey], [TableName], [Version], [CachedProperties]) VALUES
-	('{_cacheKey}', '{_tableName}', '{_daoVersion.ToString()}', '{CachedPropertiesString}')
+	INSERT INTO {_infoTableName} ([CacheKey], [TableName], [Version], [CachedProperties], [LastUpdateNumber]) 
+	OUTPUT
+		inserted.LastUpdateNumber
+	VALUES
+	('{_cacheKey}', '{_tableName}', '{_daoVersion.ToString()}', '{CachedPropertiesString}', 1)
 END";
 		}
 
@@ -352,6 +398,7 @@ END
 CREATE TABLE [dbo].[{_tableName}](	
 	Id char(512) NOT NULL, 
 	Data nvarchar(MAX),
+	[UpdateNumber] int NOT NULL
 CONSTRAINT [PK_{_tableName}] PRIMARY KEY CLUSTERED 
 (
 	[Id] ASC
@@ -366,7 +413,8 @@ BEGIN
 	CREATE TYPE [dbo].[{_dataTableType}] As Table
 	(
 		Id char(512) NOT NULL PRIMARY KEY CLUSTERED, 
-		Data nvarchar(MAX)
+		Data nvarchar(MAX),
+		UpdateNumber int NOT NULL
 	)
 END";
 		}
@@ -383,7 +431,7 @@ END";
 		{
 			// TODO: Key property
 			return
-$@"INSERT INTO {_tableName} (Id, Data) 
+$@"INSERT INTO {_tableName} (Id, Data, UpdateNumber) 
 SELECT * FROM @Entities";
 		}
 
@@ -399,16 +447,17 @@ SELECT * FROM @Entities";
 			return table;
 		}
 
-		private DataTable BuildEntitiesTableParameter(IEnumerable<KeyValuePair<string, T>> newEntities)
+		private DataTable BuildEntitiesTableParameter(IEnumerable<KeyValuePair<string, T>> newEntities, int updateNumber)
 		{
 			var table = new DataTable();
 
 			table.Columns.Add("Id", typeof(string));
 			table.Columns.Add("Data", typeof(string));
+			table.Columns.Add("UpdateNumber", typeof(int));
 
 			// inserting rows
 			foreach (var item in newEntities)
-				table.Rows.Add(item.Key, JsonConvert.SerializeObject(item.Value, Formatting.None, GetSerializerSettings()));
+				table.Rows.Add(item.Key, JsonConvert.SerializeObject(item.Value, Formatting.None, GetSerializerSettings()), updateNumber);
 
 			return table;
 		}

@@ -28,7 +28,7 @@ namespace UQFramework.Cache
             if (!(identifiers?.Any() ?? false))
                 return;
 
-            _cacheLock.EnterWriteLock(); // YSV: this lock does not make sense for is it not singleton, make it static?
+            _cacheLock.EnterWriteLock();
             try
             {
                 var lstIdentifiers = identifiers.ToList();
@@ -104,16 +104,16 @@ namespace UQFramework.Cache
             try
             {
                 var cache = MemoryCache.Default;
-				var timeStamp = _cacheProvider.LastChanged;
-				var currentTimeStamp = cache[_cacheTimeStampKey] as DateTimeOffset?;
+				var lastChange = _cacheProvider.LastChanged;
+				var savedLastChange = cache[_cacheTimeStampKey] as long?;
 
-                if (cache[_cacheKey] is IDictionary<string, T> result && currentTimeStamp == timeStamp)
+                if (cache[_cacheKey] is IDictionary<string, T> result && savedLastChange == lastChange)
                     return func(result);
 
                 var data = _cacheProvider.GetAllCachedItems();
-				timeStamp = _cacheProvider.LastChanged;
+				lastChange = _cacheProvider.LastChanged;
 				
-				SetCache(cache, data, timeStamp);
+				SetCache(cache, data, lastChange);
 
                 return func(data);
             }
@@ -126,20 +126,20 @@ namespace UQFramework.Cache
         private IEnumerable<TReturnType> EnumerateCacheItemsFromGivenRange<TReturnType>(IEnumerable<string> identifiers, Func<string, T, TReturnType> resultProvider)
         {
             if (identifiers == null)
-                return Enumerable.Empty<TReturnType>(); //yield break;
+                return Enumerable.Empty<TReturnType>();
 
 
             var list = identifiers.ToList();
 
             if (!list.Any())
-                return Enumerable.Empty<TReturnType>(); //yield break; // empty result on absense of a filter;
+                return Enumerable.Empty<TReturnType>();
 
             _cacheLock.EnterReadLock();
             try
             {
                 var cache = MemoryCache.Default;
 				var timeStamp = _cacheProvider.LastChanged;
-				var currentTimeStamp = cache[_cacheTimeStampKey] as DateTimeOffset?;
+				var currentTimeStamp = cache[_cacheTimeStampKey] as long?;
 
 				if (!(cache[_cacheKey] is IDictionary<string, T> data && currentTimeStamp == timeStamp))
                 {
@@ -148,14 +148,7 @@ namespace UQFramework.Cache
 					SetCache(cache, data, timeStamp);
                 }
 
-                // YSV: not happy doing ToList() here - but otherwise lock would not make sense, also it does not square well with iterators
                 return identifiers.Where(i => data.ContainsKey(i)).Select(id => resultProvider(id, data[id])).ToList();
-
-                //                foreach (var id in identifiers)
-                //                {
-                //                    if (data.TryGetValue(id, out var item))
-                //                        yield return resultProvider(id, item);
-                //                }
             }
             finally
             {
@@ -165,10 +158,10 @@ namespace UQFramework.Cache
 
         #endregion
 
-        private void SetCache(MemoryCache cache, IDictionary<string, T> data, DateTimeOffset cacheTimeStamp)
+        private void SetCache(MemoryCache cache, IDictionary<string, T> data, long cacheTranNumber)
         {
             cache.Set(_cacheKey, data, ObjectCache.InfiniteAbsoluteExpiration);
-			cache.Set(_cacheTimeStampKey, cacheTimeStamp, ObjectCache.InfiniteAbsoluteExpiration);
+			cache.Set(_cacheTimeStampKey, cacheTranNumber, ObjectCache.InfiniteAbsoluteExpiration);
         }
 
     }

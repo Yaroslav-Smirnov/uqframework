@@ -1,4 +1,4 @@
-name: Build
+name: Build And Test
 
 on: [push]
 
@@ -15,3 +15,5 @@ jobs:
         dotnet-version: 2.2.108
     - name: Build with dotnet
       run: dotnet build UQFramework/UQFramework.csproj --configuration Release
+    - name: Run tests
+      run: dotnet test UQFramework.Tests/UQFramework.Tests.csproj --configuration Release --filter ClassName!=UQFramework.Tests.Tests.CacheProviders.SqlCacheProviderTest

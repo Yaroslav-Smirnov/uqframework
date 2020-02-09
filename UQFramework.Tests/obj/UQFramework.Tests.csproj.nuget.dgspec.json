@@ -1,40 +1,38 @@
 {
   "format": 1,
   "restore": {
-    "C:\\MyProjects\\GitHub\\uqframework\\UQFramework.Tests\\UQFramework.Tests.csproj": {}
+    "C:\\UQ\\UQFramework.Tests\\UQFramework.Tests.csproj": {}
   },
   "projects": {
-    "C:\\MyProjects\\GitHub\\uqframework\\UQFramework.Tests\\UQFramework.Tests.csproj": {
+    "C:\\UQ\\UQFramework.Tests\\UQFramework.Tests.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\MyProjects\\GitHub\\uqframework\\UQFramework.Tests\\UQFramework.Tests.csproj",
+        "projectUniqueName": "C:\\UQ\\UQFramework.Tests\\UQFramework.Tests.csproj",
         "projectName": "UQFramework.Tests",
-        "projectPath": "C:\\MyProjects\\GitHub\\uqframework\\UQFramework.Tests\\UQFramework.Tests.csproj",
-        "packagesPath": "C:\\Users\\Admin\\.nuget\\packages\\",
-        "outputPath": "C:\\MyProjects\\GitHub\\uqframework\\UQFramework.Tests\\obj\\",
+        "projectPath": "C:\\UQ\\UQFramework.Tests\\UQFramework.Tests.csproj",
+        "packagesPath": "C:\\Users\\yaroslav.smirnov\\.nuget\\packages\\",
+        "outputPath": "C:\\UQ\\UQFramework.Tests\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
-          "C:\\Microsoft\\Xamarin\\NuGet\\",
           "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder"
         ],
         "configFilePaths": [
-          "C:\\Users\\Admin\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Xamarin.Offline.config"
+          "C:\\Users\\yaroslav.smirnov\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
           "netcoreapp2.2"
         ],
         "sources": {
-          "C:\\MyProjects\\Nuget": {},
           "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "https://api.nuget.org/v3/index.json": {}
+          "https://api.nuget.org/v3/index.json": {},
+          "https://leaprepo.leapaws.com.au/nuget/LEAP.NET/": {}
         },
         "frameworks": {
           "netcoreapp2.2": {
             "projectReferences": {
-              "C:\\MyProjects\\GitHub\\uqframework\\UQFramework\\UQFramework.csproj": {
-                "projectPath": "C:\\MyProjects\\GitHub\\uqframework\\UQFramework\\UQFramework.csproj"
+              "C:\\UQ\\UQFramework\\UQFramework.csproj": {
+                "projectPath": "C:\\UQ\\UQFramework\\UQFramework.csproj"
               }
             }
           }
@@ -85,31 +83,29 @@
         }
       }
     },
-    "C:\\MyProjects\\GitHub\\uqframework\\UQFramework\\UQFramework.csproj": {
+    "C:\\UQ\\UQFramework\\UQFramework.csproj": {
       "version": "0.3.23",
       "restore": {
-        "projectUniqueName": "C:\\MyProjects\\GitHub\\uqframework\\UQFramework\\UQFramework.csproj",
+        "projectUniqueName": "C:\\UQ\\UQFramework\\UQFramework.csproj",
         "projectName": "UQFramework",
-        "projectPath": "C:\\MyProjects\\GitHub\\uqframework\\UQFramework\\UQFramework.csproj",
-        "packagesPath": "C:\\Users\\Admin\\.nuget\\packages\\",
-        "outputPath": "C:\\MyProjects\\GitHub\\uqframework\\UQFramework\\obj\\",
+        "projectPath": "C:\\UQ\\UQFramework\\UQFramework.csproj",
+        "packagesPath": "C:\\Users\\yaroslav.smirnov\\.nuget\\packages\\",
+        "outputPath": "C:\\UQ\\UQFramework\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
-          "C:\\Microsoft\\Xamarin\\NuGet\\",
           "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder"
         ],
         "configFilePaths": [
-          "C:\\Users\\Admin\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Xamarin.Offline.config"
+          "C:\\Users\\yaroslav.smirnov\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
           "netstandard2.0"
         ],
         "sources": {
-          "C:\\MyProjects\\Nuget": {},
           "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "https://api.nuget.org/v3/index.json": {}
+          "https://api.nuget.org/v3/index.json": {},
+          "https://leaprepo.leapaws.com.au/nuget/LEAP.NET/": {}
         },
         "frameworks": {
           "netstandard2.0": {

@@ -47,7 +47,7 @@ namespace UQFramework.Cache.Providers
             _jsonContractResolver = new CachedPropertyContractResolver<T>(_cachedProperties);
         }
 
-		public override DateTimeOffset LastChanged => File.GetLastWriteTimeUtc(_pathToFile);
+		public override long LastChanged => File.GetLastWriteTimeUtc(_pathToFile).ToFileTimeUtc();
 
 		protected override bool RebuildRequired()
         {

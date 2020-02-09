@@ -29,6 +29,6 @@ namespace UQFramework.Cache
         /// </summary>
         void FullRebuild();
 
-		DateTimeOffset LastChanged { get; }
+		long LastChanged { get; }
     }
 }
