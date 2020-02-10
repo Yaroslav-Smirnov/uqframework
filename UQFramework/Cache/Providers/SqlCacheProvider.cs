@@ -10,10 +10,12 @@ using System.Data.Common;
 
 namespace UQFramework.Cache.Providers
 {
-	public class SqlCacheProvider<T> : PersistentCacheProviderBase<T> where T : new()
+	public class SqlCacheProvider<T> : PersistentCacheProviderBase<T>, IPersistentCacheProviderEx<T> 
+        where T : new()
 	{
 		private readonly string _connectionString;
 		private readonly string _tableName;
+        private readonly string _updatesTableName;
 		private readonly Version _daoVersion;
 		private const string _infoTableName = "_Info";
 		private const string _identifiersTableType = "TypeTableIdentifiers";
@@ -33,6 +35,7 @@ namespace UQFramework.Cache.Providers
 
 			_cacheKey = $"{typeof(T).Name}_{dataSourceReader.GetType().Name.Replace("`", "")}";
 			_tableName = $"Table_{_cacheKey}";
+            _updatesTableName = $"Updates_{_cacheKey}";
 
 			_dataBaseName = $"Database{_dataStoreSetId}";
 
@@ -41,7 +44,66 @@ namespace UQFramework.Cache.Providers
 			_jsonContractResolver = new CachedPropertyContractResolver<T>(_cachedProperties);
 		}
 
-		public override long LastChanged
+        // returns delta based on the passed updateNumber
+        
+        public (IEnumerable<string> replacedItemsIdentifiers, IDictionary<string, T> newItems, long lastUpdate) GetDelta(long? updateNumber)
+        {
+            var lastUpdate = (long)-1;
+            var items = (IDictionary<string, T>)null;
+            var identifiers = (IEnumerable<string>)null;
+
+            if (updateNumber == null)
+                return (null, GetAllCachedItems(), -1);
+
+            ExecuteSqlDelegate(cn =>
+            {
+                using(var cm = cn.CreateCommand())
+                {
+                    cm.Transaction = CacheGlobals.Transaction as SqlTransaction;
+
+                    // check database
+                    EnsureDbExists(cn, cm);
+
+                    // get last number
+                    cm.CommandText = BuildGetLastTableChangedTime();
+                    var result = cm.ExecuteScalar();
+
+                    if (result == null || result is DBNull)
+                        lastUpdate = 0;
+
+                    lastUpdate = Convert.ToInt64(result);
+
+                    // get items
+                    cm.CommandText = BuildGetDeltaSql(updateNumber.Value);
+
+                    var list = new List<(string key, string value)>();
+                    using (var rdr = cm.ExecuteReader())
+                    {
+                        while (rdr.Read())
+                            list.Add((rdr["Id"].ToString().Trim(), rdr["Data"].ToString()));
+                    }
+
+                    items = list.AsParallel().ToDictionary(kvp => kvp.key, kvp => JsonConvert.DeserializeObject<T>(kvp.value, GetSerializerSettings()));
+
+                    // get change items
+                    cm.CommandText = BuildGetReplacedItems(updateNumber.Value, lastUpdate);
+
+                    var listId = new List<string>();
+                    using(var rdr = cm.ExecuteReader())
+                    {
+                        while(rdr.Read())
+                        {
+                            listId.Add(rdr.GetString(0).Trim());
+                        }
+                    }
+                    identifiers = listId.AsEnumerable();
+                }
+            });
+
+            return (identifiers, items, lastUpdate);
+        }
+
+        public override long LastChanged
 		{
 			get
 			{
@@ -76,14 +138,12 @@ namespace UQFramework.Cache.Providers
 					cn.ChangeDatabase(_dataBaseName);
 
 					cm.CommandText = BuildSelectSQL();
-					var rdr = cm.ExecuteReader();
-					//var result = new Dictionary<string, T>();
-
-					// quicly load everything in memory, then deserialize in parrallel;
-					var list = new List<(string key, string value)>();
-					while (rdr.Read())
-						list.Add((rdr["Id"].ToString().Trim(), rdr["Data"].ToString()));
-
+                    var list = new List<(string key, string value)>();
+                    using (var rdr = cm.ExecuteReader())
+                    {
+                        while (rdr.Read())
+                            list.Add((rdr["Id"].ToString().Trim(), rdr["Data"].ToString()));
+                    }
 					return list.AsParallel().ToDictionary(kvp => kvp.key, kvp => JsonConvert.DeserializeObject<T>(kvp.value, GetSerializerSettings()));
 				}
 			});
@@ -130,8 +190,13 @@ namespace UQFramework.Cache.Providers
 					cm.CommandText = BuildCreateTableSql();
 					cm.ExecuteNonQuery();
 
-					// re-create table type 
-					cm.CommandText = BuildCreateTypeSql();
+                    // re-create updates table
+
+                    cm.CommandText = BuildUpdatesTableSql();
+                    cm.ExecuteNonQuery();
+
+                    // re-create table type 
+                    cm.CommandText = BuildCreateTypeSql();
 					cm.ExecuteNonQuery();
 
 					void UpdateCache()
@@ -287,7 +352,7 @@ WHERE
 				cm.CommandText =
 $@"CREATE TYPE [dbo].[{_identifiersTableType}] As Table
 	(
-		Id char(512) NOT NULL PRIMARY KEY CLUSTERED
+		Id varchar(512) NOT NULL PRIMARY KEY CLUSTERED
 	)
 
 	CREATE TABLE [dbo].[{_infoTableName}](	
@@ -305,7 +370,27 @@ $@"CREATE TYPE [dbo].[{_identifiersTableType}] As Table
 		}
 
 		#region SQL Building
+        // Using string building instead of parameters for all parameters are internal 
+        // and there is no threat of SQL injection
 
+        private string BuildGetReplacedItems(long startUpdateNumber, long endUpdateNumber)
+        {
+            return
+$@"SELECT
+    ItemId
+FROM
+    {_updatesTableName}
+WHERE
+    UpdateNumber BETWEEN {startUpdateNumber + 1} AND {endUpdateNumber}";
+        }
+
+        private string BuildGetDeltaSql(long updateNumber)
+        {
+            return
+$@"{BuildSelectSQL()}
+WHERE
+    UpdateNumber > {updateNumber}";
+        }
 		private string BuildGetLastTableChangedTime()
 		{
 			return
@@ -396,14 +481,48 @@ BEGIN
 END
 
 CREATE TABLE [dbo].[{_tableName}](	
-	Id char(512) NOT NULL, 
+	Id varchar(512) NOT NULL, 
 	Data nvarchar(MAX),
 	[UpdateNumber] int NOT NULL
 CONSTRAINT [PK_{_tableName}] PRIMARY KEY CLUSTERED 
 (
 	[Id] ASC
-))";
+))
+
+CREATE NONCLUSTERED INDEX [IX_{_tableName}_UpdateNumber] ON [dbo].[{_tableName}]
+(
+	[UpdateNumber] ASC
+)";
 		}
+
+        private string BuildUpdatesTableSql()
+        {
+            return
+$@"IF EXISTS 
+	(SELECT 
+		1 
+	FROM 
+		INFORMATION_SCHEMA.TABLES
+	WHERE 
+		TABLE_NAME = '{_updatesTableName}')
+BEGIN
+	DROP TABLE [dbo].[{_updatesTableName}]
+END
+
+CREATE TABLE [dbo].[{_updatesTableName}](
+	[UpdateNumber] [int] NOT NULL,
+	[ItemId] [char](512) NOT NULL,
+ CONSTRAINT [PK_{_updatesTableName}] PRIMARY KEY CLUSTERED 
+(
+	[UpdateNumber] ASC,
+	[ItemId] ASC
+))
+
+CREATE NONCLUSTERED INDEX [IX_{_updatesTableName}_UpdateNumber] ON [dbo].[{_updatesTableName}]
+(
+	[UpdateNumber] ASC
+)";
+        }
 
 		private string BuildCreateTypeSql()
 		{
@@ -412,7 +531,7 @@ $@"IF TYPE_ID(N'{_dataTableType}') IS NULL
 BEGIN
 	CREATE TYPE [dbo].[{_dataTableType}] As Table
 	(
-		Id char(512) NOT NULL PRIMARY KEY CLUSTERED, 
+		Id varchar(512) NOT NULL PRIMARY KEY CLUSTERED, 
 		Data nvarchar(MAX),
 		UpdateNumber int NOT NULL
 	)
@@ -432,7 +551,10 @@ END";
 			// TODO: Key property
 			return
 $@"INSERT INTO {_tableName} (Id, Data, UpdateNumber) 
-SELECT * FROM @Entities";
+SELECT * FROM @Entities;
+
+INSERT INTO {_updatesTableName} ([UpdateNumber], [ItemId])
+SELECT UpdateNumber, Id FROM @Entities";
 		}
 
 		private DataTable BuildIdentifiersTable(IEnumerable<string> indentifiers)
@@ -469,6 +591,6 @@ SELECT * FROM @Entities";
 				(SELECT Id FROM @Identifiers)";
 		}
 
-		#endregion
-	}
+        #endregion
+    }
 }

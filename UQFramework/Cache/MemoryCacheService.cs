@@ -11,7 +11,7 @@ namespace UQFramework.Cache
         private readonly ReaderWriterLockSlim _cacheLock = new ReaderWriterLockSlim();
         private readonly IPersistentCacheProvider<T> _cacheProvider;
         private readonly string _cacheKey;
-		private readonly string _cacheTimeStampKey;
+        private readonly string _cacheUpdateNumberKey;
 
         public MemoryCacheService(IPersistentCacheProvider<T> cacheProvider)
         {
@@ -19,8 +19,8 @@ namespace UQFramework.Cache
                 throw new ArgumentNullException(nameof(cacheProvider));
 
             _cacheKey = cacheProvider.UniqueCacheKey;
-			_cacheTimeStampKey = $"Time{_cacheKey}";
-			_cacheProvider = cacheProvider;
+            _cacheUpdateNumberKey = $"Update_{_cacheKey}";
+            _cacheProvider = cacheProvider;
         }
 
         public void NotifyUpdated(IEnumerable<string> identifiers)
@@ -31,6 +31,7 @@ namespace UQFramework.Cache
             _cacheLock.EnterWriteLock();
             try
             {
+                // rebuild items anyway
                 var lstIdentifiers = identifiers.ToList();
                 var updatedItems = _cacheProvider.RebuildItems(lstIdentifiers);
 
@@ -39,18 +40,17 @@ namespace UQFramework.Cache
                 if (!(cache[_cacheKey] is IDictionary<string, T> data))
                     return; // nothing to update, cache will be read when next time requested;
 
-                // do incremental update
-                foreach (var id in lstIdentifiers)
+                if (!(_cacheProvider is IPersistentCacheProviderEx<T> _cacheProviderWithDelta))
                 {
-                    if (!updatedItems.ContainsKey(id))
-                    {
-                        data.Remove(id);
-                    }
-                    else
-                    {
-                        data[id] = updatedItems[id];
-                    }
+                    ApplyDelta(data, lstIdentifiers, updatedItems);
+                    return;
                 }
+
+                var lastUpdate = cache[_cacheUpdateNumberKey] as long?;
+                var (replacedItemsIdentifiers, newItems, lastChange) = _cacheProviderWithDelta.GetDelta(lastUpdate);
+
+                ApplyDelta(data, replacedItemsIdentifiers, newItems);
+                SetCache(cache, lastChange);
             }
             finally
             {
@@ -93,10 +93,26 @@ namespace UQFramework.Cache
         public void NotifyCacheExpired()
         {
             var cache = MemoryCache.Default;
-            cache.Remove(_cacheKey);            
+            cache.Remove(_cacheKey);
         }
 
         #region Helpers
+
+        private void ApplyDelta(IDictionary<string, T> data, IEnumerable<string> replacedItemsIdentifiers, IDictionary<string, T> newItems)
+        {
+            // do incremental update
+            foreach (var id in replacedItemsIdentifiers)
+            {
+                if (!newItems.ContainsKey(id))
+                {
+                    data.Remove(id);
+                }
+                else
+                {
+                    data[id] = newItems[id];
+                }
+            }
+        }
 
         private TReturnType ReadAllCache<TReturnType>(Func<IDictionary<string, T>, TReturnType> func)
         {
@@ -104,16 +120,29 @@ namespace UQFramework.Cache
             try
             {
                 var cache = MemoryCache.Default;
-				var lastChange = _cacheProvider.LastChanged;
-				var savedLastChange = cache[_cacheTimeStampKey] as long?;
+                var lastChange = _cacheProvider.LastChanged;
+                var savedLastChange = cache[_cacheUpdateNumberKey] as long?;
 
                 if (cache[_cacheKey] is IDictionary<string, T> result && savedLastChange == lastChange)
                     return func(result);
 
-                var data = _cacheProvider.GetAllCachedItems();
-				lastChange = _cacheProvider.LastChanged;
-				
-				SetCache(cache, data, lastChange);
+                var data = cache[_cacheKey] as IDictionary<string, T>;
+
+                if (_cacheProvider is IPersistentCacheProviderEx<T> _cacheProviderWithDelta &&
+                    savedLastChange != null && data != null)
+                {
+                    var (replacedItemsIdentifiers, updatedItems, lastUpdate) = 
+                        _cacheProviderWithDelta.GetDelta(savedLastChange);
+
+                    ApplyDelta(data, replacedItemsIdentifiers, updatedItems);
+                    SetCache(cache, lastUpdate);
+                }
+                else
+                {
+                    data = _cacheProvider.GetAllCachedItems();
+                    lastChange = _cacheProvider.LastChanged;
+                    SetCache(cache, data, lastChange);
+                }
 
                 return func(data);
             }
@@ -138,14 +167,21 @@ namespace UQFramework.Cache
             try
             {
                 var cache = MemoryCache.Default;
-				var timeStamp = _cacheProvider.LastChanged;
-				var currentTimeStamp = cache[_cacheTimeStampKey] as long?;
+                var savedLastChange = cache[_cacheUpdateNumberKey] as long?;
 
-				if (!(cache[_cacheKey] is IDictionary<string, T> data && currentTimeStamp == timeStamp))
+                if (!(cache[_cacheKey] is IDictionary<string, T> data && savedLastChange == _cacheProvider.LastChanged))
                 {
-                    data = _cacheProvider.GetAllCachedItems();
-					timeStamp = _cacheProvider.LastChanged;
-					SetCache(cache, data, timeStamp);
+                    data = cache[_cacheKey] as IDictionary<string, T>;
+                    if(_cacheProvider is IPersistentCacheProviderEx<T> _cacheProviderWithDelta && data!=null)
+                    {                        
+                        var (replacedItemsIdentifiers, updatedItems, lastUpdate) =
+                            _cacheProviderWithDelta.GetDelta(savedLastChange);
+
+                        ApplyDelta(data, replacedItemsIdentifiers, updatedItems);
+                        SetCache(cache, lastUpdate);
+                    }
+                    data = _cacheProvider.GetAllCachedItems();                    
+                    SetCache(cache, data, _cacheProvider.LastChanged);
                 }
 
                 return identifiers.Where(i => data.ContainsKey(i)).Select(id => resultProvider(id, data[id])).ToList();
@@ -161,8 +197,12 @@ namespace UQFramework.Cache
         private void SetCache(MemoryCache cache, IDictionary<string, T> data, long cacheTranNumber)
         {
             cache.Set(_cacheKey, data, ObjectCache.InfiniteAbsoluteExpiration);
-			cache.Set(_cacheTimeStampKey, cacheTranNumber, ObjectCache.InfiniteAbsoluteExpiration);
+            SetCache(cache, cacheTranNumber);
         }
 
+        private void SetCache(MemoryCache cache, long cacheTranNumber)
+        {
+            cache.Set(_cacheUpdateNumberKey, cacheTranNumber, ObjectCache.InfiniteAbsoluteExpiration);
+        }
     }
 }
