@@ -22,7 +22,7 @@ namespace UQFramework
         internal UQCollection()
         {
             _identifierGetter = GeneralHelper.GetIdentiferGetter<T>(out _keyProperty);
-		}		
+        }
 
         void IUQCollectionInitializer.Initialize(object dataAccessObject, object cacheProvider)
         {
@@ -83,6 +83,18 @@ namespace UQFramework
             _deletedItems.Remove(itemKey);
         }
 
+        public TResult Query<TResult>(string queryName, params object[] parameters)
+        {
+            // YSV: consider compilation the way it is done in the cache system
+            var type = _dataAccessObject.GetType();
+            var parameterTypes = parameters.Select(p => p.GetType()).ToArray();
+            var methodInfo = _dataAccessObject.GetType().GetMethod(queryName, parameterTypes);
+            if (methodInfo == null)
+                throw new InvalidOperationException($"DAO of type {type} does not have a method {queryName} accepting the provided parameters");
+
+            return (TResult)methodInfo.Invoke(_dataAccessObject, parameters);
+        }
+
         IEnumerable<T> ISavableData<T>.CombineWithPendingChanges(IEnumerable<T> data, Func<T, bool> filter)
         {
             if (!_deletedItems.Any() && !_addedItems.Any() && !_updatedItems.Any())
@@ -125,13 +137,13 @@ namespace UQFramework
 
         IEnumerable<T> ISavableData<T>.PendingAdd => _addedItems;
 
-		IEnumerable<(Type type, string id, object entity)> ISavableDataEx.PendingAdd => _addedItems.Select(x => (typeof(T), _identifierGetter(x), (object)x)).ToList();
+        IEnumerable<(Type type, string id, object entity)> ISavableDataEx.PendingAdd => _addedItems.Select(x => (typeof(T), _identifierGetter(x), (object)x)).ToList();
 
-		IEnumerable<(Type type, string id, object entity)> ISavableDataEx.PendingUpdate => _updatedItems.Values.Select(x => (typeof(T), _identifierGetter(x), (object)x)).ToList();
+        IEnumerable<(Type type, string id, object entity)> ISavableDataEx.PendingUpdate => _updatedItems.Values.Select(x => (typeof(T), _identifierGetter(x), (object)x)).ToList();
 
-		IEnumerable<(Type type, string id, object entity)> ISavableDataEx.PendingDelete => _deletedItems.Values.Select(x => (typeof(T), _identifierGetter(x), (object)x)).ToList();
+        IEnumerable<(Type type, string id, object entity)> ISavableDataEx.PendingDelete => _deletedItems.Values.Select(x => (typeof(T), _identifierGetter(x), (object)x)).ToList();
 
-		private IQueryProvider GetQueryProvider()
+        private IQueryProvider GetQueryProvider()
         {
             //var queryContext = new QueryContext<T>(GetEntitiesConsideringPending, GetEntitiesIdentifiersConsideringPending, GetEntitiesConsideringPending);
             return new QueryProvider(this);
@@ -140,7 +152,7 @@ namespace UQFramework
 
         #region Getting Entities By identifiers
 
-		/*
+        /*
         private IEnumerable<T> GetEntitiesConsideringPending(IEnumerable<string> identifiers, bool cacheUseAllowed)
         {
             // The method is called from QueryContext. 
@@ -166,7 +178,7 @@ namespace UQFramework
 
             return savable.CombineWithPendingChanges(GetEntities(filter, cacheUseAllowed), x => identifiers.Contains(_identifierGetter(x)));
         }*/
-		/*
+        /*
         private IEnumerable<T> GetEntities(IEnumerable<string> identifiers, bool cacheUseAllowed)
         {
             if (_cachedDataProvider != null && cacheUseAllowed)
@@ -182,7 +194,7 @@ namespace UQFramework
 
             return GetAllEntitiesFromDao();
         }*/
-		/*
+        /*
         private IEnumerable<T> GetAllEntitiesFromDao()
         {
             if (_dataAccessObject is IDataSourceEnumeratorEx<T> dataSourceReaderAll)
@@ -211,54 +223,54 @@ namespace UQFramework
 
         #endregion
 
-		void ISavableDataEx.Delete()
-		{
-			if (!_deletedItems.Any())
-				return;
+        void ISavableDataEx.Delete()
+        {
+            if (!_deletedItems.Any())
+                return;
 
-			// Note: assume that the data access object will take care of updating order
-			if (_dataAccessObject is IDataSourceBulkWriter<T> bulkWriter)
-			{
-				bulkWriter.UpdateDataSource(Enumerable.Empty<T>(), Enumerable.Empty<T>(), _deletedItems.Values);
-				return;
-			}
+            // Note: assume that the data access object will take care of updating order
+            if (_dataAccessObject is IDataSourceBulkWriter<T> bulkWriter)
+            {
+                bulkWriter.UpdateDataSource(Enumerable.Empty<T>(), Enumerable.Empty<T>(), _deletedItems.Values);
+                return;
+            }
 
-			// Note: it is assumed that if data access object does not support bulk operations then order is not essential and parallel is fine
-			if (_dataAccessObject is IDataSourceWriter<T> justWriter)
-			{
-				// Delete
-				Parallel.ForEach(_deletedItems, item => justWriter.DeleteEntity(item.Value));
-			}
-		}
+            // Note: it is assumed that if data access object does not support bulk operations then order is not essential and parallel is fine
+            if (_dataAccessObject is IDataSourceWriter<T> justWriter)
+            {
+                // Delete
+                Parallel.ForEach(_deletedItems, item => justWriter.DeleteEntity(item.Value));
+            }
+        }
 
-		void ISavableDataEx.CreateAndUpdate()
-		{
-			// if there is nothing to add, update or delete then return
-			if (!_updatedItems.Any() && !_addedItems.Any())
-				return;
+        void ISavableDataEx.CreateAndUpdate()
+        {
+            // if there is nothing to add, update or delete then return
+            if (!_updatedItems.Any() && !_addedItems.Any())
+                return;
 
-			if (_dataAccessObject is IDataSourceBulkWriter<T> bulkWriter)
-			{
-				bulkWriter.UpdateDataSource(_addedItems, _updatedItems.Values, Enumerable.Empty<T>());
-				return;
-			}
+            if (_dataAccessObject is IDataSourceBulkWriter<T> bulkWriter)
+            {
+                bulkWriter.UpdateDataSource(_addedItems, _updatedItems.Values, Enumerable.Empty<T>());
+                return;
+            }
 
-			if (_dataAccessObject is IDataSourceWriter<T> justWriter)
-			{
-				// YSV: assume that parrallel is safe which is true in case of files but 
-				// might not be true in case of SQL (e.g. self-referencing table where order is essential)
+            if (_dataAccessObject is IDataSourceWriter<T> justWriter)
+            {
+                // YSV: assume that parrallel is safe which is true in case of files but 
+                // might not be true in case of SQL (e.g. self-referencing table where order is essential)
 
-				// TODO: check self-referencing properties and run in parallel only if there is no problem
+                // TODO: check self-referencing properties and run in parallel only if there is no problem
 
-				// 2. Add
-				Parallel.ForEach(_addedItems, justWriter.AddEntity);
+                // 2. Add
+                Parallel.ForEach(_addedItems, justWriter.AddEntity);
 
-				// 3. Update
-				Parallel.ForEach(_updatedItems, item => justWriter.UpdateEntity(item.Value));
-			}
-		}
+                // 3. Update
+                Parallel.ForEach(_updatedItems, item => justWriter.UpdateEntity(item.Value));
+            }
+        }
 
-		void ISavableDataEx.UpdateCacheWithPendingChanges()
+        void ISavableDataEx.UpdateCacheWithPendingChanges()
         {
             if (!(_cachedDataProvider is ICachedDataProviderEx cachedDataProviderEx))
                 return;

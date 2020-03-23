@@ -1,4 +1,5 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.IO;
@@ -107,6 +108,35 @@ namespace UQFramework.Tests
             Assert.IsNotNull(result);
             Assert.AreEqual("Item 4000", result.Name);
             //Assert.AreEqual(1000, methodCounter.EntityCallsCount); // 1000 calls for cannot get id from invocations
+        }
+
+        [TestMethod]
+        public void TestQuery()
+        {
+            // Arrange
+            var methodCounter = new DaoMethodCallsCounter();
+            var context = new DummyContext(_folder, methodCounter);
+
+            // Act
+            var result = context.DummyEntitiesWithCache.Query<bool>("GetTest");
+
+            // Assert
+            Assert.IsTrue(result);
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(InvalidOperationException))]
+        public void TestQueryNoSuchMethod()
+        {
+            // Arrange
+            var methodCounter = new DaoMethodCallsCounter();
+            var context = new DummyContext(_folder, methodCounter);
+
+            // Act
+            var result = context.DummyEntitiesWithCache.Query<bool>("NoSuchMethod");
+
+            // Assert
+            Assert.IsTrue(result);
         }
     }
 

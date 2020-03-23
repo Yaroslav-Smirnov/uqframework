@@ -9,5 +9,7 @@ namespace UQFramework
         void Remove(T item);
 
         void Update(T item);
+
+        TResult Query<TResult>(string queryName, params object[] parameters);
     }
 }

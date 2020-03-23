@@ -86,5 +86,10 @@ namespace UQFramework.Tests
         {
             return Directory.EnumerateFiles(_folder, "*.json").Count();
         }
+
+        public bool GetTest()
+        {
+            return true;
+        }
     }
 }
