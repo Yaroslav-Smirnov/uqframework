@@ -27,15 +27,5 @@ namespace UQFramework
         IEnumerable<T> GetAllPendingChanges();
 
         IEnumerable<string> GetAllPendingChangesIdentifiers();
-
-        /// <summary>
-        /// Returns items pending deletion
-        /// </summary>
-        /// <returns></returns>
-        IEnumerable<T> PendingDelete { get; }
-
-        IEnumerable<T> PendingUpdate { get; }
-
-        IEnumerable<T> PendingAdd { get; }
     }
 }

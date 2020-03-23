@@ -131,12 +131,6 @@ namespace UQFramework
             return (this as ISavableData<T>).GetAllPendingChanges().Select(_identifierGetter);
         }
 
-        IEnumerable<T> ISavableData<T>.PendingDelete => _deletedItems.Values;
-
-        IEnumerable<T> ISavableData<T>.PendingUpdate => _updatedItems.Values;
-
-        IEnumerable<T> ISavableData<T>.PendingAdd => _addedItems;
-
         IEnumerable<(Type type, string id, object entity)> ISavableDataEx.PendingAdd => _addedItems.Select(x => (typeof(T), _identifierGetter(x), (object)x)).ToList();
 
         IEnumerable<(Type type, string id, object entity)> ISavableDataEx.PendingUpdate => _updatedItems.Values.Select(x => (typeof(T), _identifierGetter(x), (object)x)).ToList();
