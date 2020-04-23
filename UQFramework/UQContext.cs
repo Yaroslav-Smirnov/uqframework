@@ -144,6 +144,11 @@ namespace UQFramework
 
 		}
 
+		protected virtual void OnAfterChangesProcessed()
+		{
+
+		}
+
 		public void SaveChanges(string commitMessage = null)
 		{
 			OnBeforeSaveChanges();
@@ -164,6 +169,8 @@ namespace UQFramework
 				// 1.b  Create and update 
 				foreach (var collection in collections)
 					collection.CreateAndUpdate();
+
+				OnAfterChangesProcessed();
 
 				// 2. Update Cache
 				// if we within a DbTransaction assign it to static variable
